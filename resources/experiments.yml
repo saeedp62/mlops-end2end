@@ -1,0 +1,16 @@
+# =============================================================================
+# resources/experiments.yml
+# MLflow experiment definitions managed via Databricks Asset Bundles.
+#
+# Declaring experiments here ensures they are created in the correct workspace
+# path automatically on bundle deploy, with the right permissions.
+# =============================================================================
+
+resources:
+  experiments:
+    churn_experiment:
+      name: /Shared/dbdemos/experiments/mlops-end2end-churn-${bundle.target}
+      description: >
+        MLflow experiment for the churn prediction MLOps pipeline.
+        Tracks hyperparameter tuning runs, champion/challenger model comparisons,
+        and feature engineering metrics per environment target.

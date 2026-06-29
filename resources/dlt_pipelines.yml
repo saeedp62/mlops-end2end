@@ -1,0 +1,96 @@
+# =============================================================================
+# resources/dlt_pipelines.yml
+# DLT pipeline resource definitions for the churn MLOps project.
+#
+# Two pipelines are defined:
+#   1. churn_bronze_ingestion       – dlt_ingestion.py
+#      Reads raw data from the configured source (cross-catalog UC table or
+#      Volume CSV) and lands it as a validated bronze Delta table.
+#
+#   2. churn_feature_engineering    – dlt_feature_engineering.py
+#      Reads the validated bronze layer and computes silver feature + label
+#      tables, including train/test split assignment.
+#
+# The pipelines are intentionally separated so they can be triggered and
+# updated independently (e.g. re-ingest without re-running feature logic).
+# Both pipelines read their runtime config from a YAML file stored in a UC
+# Volume – the path is passed as a pipeline parameter.
+# =============================================================================
+
+resources:
+  pipelines:
+
+    # -------------------------------------------------------------------------
+    # Pipeline 1: Bronze Ingestion
+    # -------------------------------------------------------------------------
+    churn_bronze_ingestion:
+      name: "[${bundle.target}] Churn – Bronze Ingestion"
+
+      # DLT Serverless (recommended) or photon-accelerated classic cluster
+      serverless: true                  # set to false + add clusters: block for classic
+
+      catalog: ${var.catalog}
+      target: ${var.db}                 # schema where DLT materialises tables
+
+      # Pipeline-level configuration passed to the code via spark.conf.get()
+      configuration:
+        config_path: ${var.artifacts_volume}/configs/${bundle.target}.yaml
+        pipelines.config_path: ${var.artifacts_volume}/configs/${bundle.target}.yaml
+
+      development: false                # overridden to true in dev target
+
+      channel: CURRENT                  # DLT runtime channel (CURRENT | PREVIEW)
+
+      # Python wheel libraries installed on the pipeline cluster
+      libraries:
+        - notebook:
+            path: /Workspace/${workspace.root_path}/files/pipelines/dlt_ingestion.py
+
+        - whl: ${var.artifacts_volume}/wheels/mlops_utils-*.whl
+        - whl: ${var.artifacts_volume}/wheels/mlops_churn-*.whl
+
+      # Notifications (configure your email / webhook)
+      notifications:
+        - email_recipients:
+            - ${var.pipeline_sp}
+          alerts:
+            - on-update-failure
+            - on-flow-failure
+
+      # Continuous vs triggered – use triggered for batch pipelines
+      continuous: false
+
+    # -------------------------------------------------------------------------
+    # Pipeline 2: Feature Engineering
+    # -------------------------------------------------------------------------
+    churn_feature_engineering:
+      name: "[${bundle.target}] Churn – Feature Engineering"
+
+      serverless: true
+
+      catalog: ${var.catalog}
+      target: ${var.db}
+
+      configuration:
+        config_path: ${var.artifacts_volume}/configs/${bundle.target}.yaml
+        pipelines.config_path: ${var.artifacts_volume}/configs/${bundle.target}.yaml
+
+      development: false
+
+      channel: CURRENT
+
+      libraries:
+        - notebook:
+            path: /Workspace/${workspace.root_path}/files/pipelines/dlt_feature_engineering.py
+
+        - whl: ${var.artifacts_volume}/wheels/mlops_utils-*.whl
+        - whl: ${var.artifacts_volume}/wheels/mlops_churn-*.whl
+
+      notifications:
+        - email_recipients:
+            - ${var.pipeline_sp}
+          alerts:
+            - on-update-failure
+            - on-flow-failure
+
+      continuous: false

@@ -1,0 +1,134 @@
+# =============================================================================
+# databricks.yml
+# Databricks Asset Bundle (DAB) – root configuration
+#
+# This file is the single source of truth for all Databricks resources
+# (DLT pipelines, batch jobs, MLflow experiments) across every environment.
+#
+# Version control:  this file lives in Git alongside all pipeline code.
+# Deployment:       `databricks bundle deploy --target <env>`
+# Validation:       `databricks bundle validate`
+#
+# Docs: https://docs.databricks.com/en/dev-tools/bundles/index.html
+# =============================================================================
+
+bundle:
+  name: mlops-end2end-churn
+
+# ---------------------------------------------------------------------------
+# Shared variables (overridable per target)
+# ---------------------------------------------------------------------------
+variables:
+  catalog:
+    description: Unity Catalog name.
+    default: main
+
+  db:
+    description: Schema / database name.
+    default: dbdemos_mlops
+
+  # Volume path where config YAMLs and wheel artifacts are stored.
+  # The bundle uploads wheels here during deployment.
+  artifacts_volume:
+    description: UC Volume path for config and wheel uploads.
+    default: /Volumes/main/dbdemos_mlops/bundle
+
+  # Source of raw customer data (overridden per target)
+  source_type:
+    description: "Data source type: unity_catalog_table | volume_csv"
+    default: volume_csv
+
+  source_table:
+    description: "Fully-qualified source table (used when source_type=unity_catalog_table)."
+    default: ""
+
+  node_type:
+    description: Databricks node type for clusters.
+    default: Standard_DS3_v2   # Azure; change to i3.xlarge for AWS
+
+  # Service principal email used for pipeline ownership (set per target)
+  pipeline_sp:
+    description: Service principal or user running pipelines.
+    default: ""
+
+# ---------------------------------------------------------------------------
+# Artifacts – Python wheels built from this repo
+# ---------------------------------------------------------------------------
+artifacts:
+  mlops_utils_wheel:
+    type: whl
+    path: packages/mlops_utils/       # hatch build runs here
+
+  churn_wheel:
+    type: whl
+    path: ./                          # root pyproject.toml
+
+# ---------------------------------------------------------------------------
+# Resource definitions (split into separate files for maintainability)
+# ---------------------------------------------------------------------------
+include:
+  - resources/dlt_pipelines.yml
+  - resources/jobs.yml
+  - resources/experiments.yml
+
+# ---------------------------------------------------------------------------
+# Deployment targets
+# ---------------------------------------------------------------------------
+targets:
+
+  # ── Dev ──────────────────────────────────────────────────────────────────
+  # Used by individual developers for interactive experimentation.
+  # Run: databricks bundle deploy --target dev
+  dev:
+    mode: development     # Prefix all resources with "[dev <username>]"
+    default: true
+
+    workspace:
+      host: ${workspace.host}   # read from ~/.databrickscfg or DATABRICKS_HOST
+
+    variables:
+      catalog: main
+      db: dbdemos_mlops_dev
+      artifacts_volume: /Volumes/main/dbdemos_mlops_dev/bundle
+      source_type: volume_csv
+      source_table: ""
+
+    run_as:
+      # In dev mode each developer runs under their own identity
+      user_name: ${workspace.current_user.userName}
+
+  # ── Staging ──────────────────────────────────────────────────────────────
+  # Deployed automatically on merge to the `develop` branch via GitHub Actions.
+  # Run: databricks bundle deploy --target staging
+  staging:
+    workspace:
+      host: ${var.DATABRICKS_HOST}
+
+    variables:
+      catalog: main
+      db: dbdemos_mlops_staging
+      artifacts_volume: /Volumes/main/dbdemos_mlops_staging/bundle
+      source_type: unity_catalog_table
+      source_table: telco_catalog.customer360.base_customers
+      node_type: Standard_DS3_v2
+
+    run_as:
+      service_principal_name: ${var.PIPELINE_SP_CLIENT_ID}
+
+  # ── Prod ─────────────────────────────────────────────────────────────────
+  # Deployed on merge to `main` via GitHub Actions (requires manual approval gate).
+  # Run: databricks bundle deploy --target prod
+  prod:
+    workspace:
+      host: ${var.DATABRICKS_HOST_PROD}
+
+    variables:
+      catalog: main
+      db: dbdemos_mlops
+      artifacts_volume: /Volumes/main/dbdemos_mlops/bundle
+      source_type: unity_catalog_table
+      source_table: telco_catalog.customer360.base_customers
+      node_type: Standard_DS3_v2
+
+    run_as:
+      service_principal_name: ${var.PIPELINE_SP_CLIENT_ID_PROD}

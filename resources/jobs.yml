@@ -1,0 +1,110 @@
+# =============================================================================
+# resources/jobs.yml
+# Batch Databricks Jobs for the churn MLOps project.
+#
+# Jobs use the same Python packages (installed via wheel tasks) and configs
+# as the DLT pipelines, ensuring identical logic between the two paths.
+#
+# Defined jobs:
+#   churn_full_pipeline_job   – end-to-end: ingest → features → (future: train)
+#   churn_feature_refresh_job – lightweight: refresh feature store only
+# =============================================================================
+
+resources:
+  jobs:
+
+    # -------------------------------------------------------------------------
+    # Job: Full end-to-end pipeline
+    # Runs sequentially: bronze ingestion → feature engineering notebook
+    # -------------------------------------------------------------------------
+    churn_full_pipeline_job:
+      name: "[${bundle.target}] Churn – Full Pipeline"
+
+      schedule:
+        quartz_cron_expression: "0 0 3 * * ?"    # 03:00 UTC daily
+        timezone_id: UTC
+        pause_status: PAUSED                       # set to UNPAUSED in prod
+
+      # Email notifications
+      email_notifications:
+        on_failure:
+          - ${var.pipeline_sp}
+
+      # Shared job cluster (reused across all tasks in this job)
+      job_clusters:
+        - job_cluster_key: churn_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: ${var.node_type}
+            num_workers: 2
+            spark_conf:
+              spark.databricks.delta.preview.enabled: "true"
+            data_security_mode: SINGLE_USER
+            runtime_engine: PHOTON
+
+      tasks:
+
+        # ── Task 0: Install wheels ──────────────────────────────────────────
+        # Uploads are done by `bundle deploy`; this task just validates the
+        # wheels are present before running pipeline code.
+        - task_key: install_check
+          job_cluster_key: churn_cluster
+          python_wheel_task:
+            package_name: mlops_utils
+            entry_point: mlops_utils.spark_utils   # import-level smoke test
+          libraries:
+            - whl: ${var.artifacts_volume}/wheels/mlops_utils-*.whl
+            - whl: ${var.artifacts_volume}/wheels/mlops_churn-*.whl
+
+        # ── Task 1: Run DLT Bronze Ingestion pipeline ────────────────────────
+        - task_key: bronze_ingestion
+          depends_on:
+            - task_key: install_check
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.churn_bronze_ingestion.id}
+            full_refresh: false
+
+        # ── Task 2: Run DLT Feature Engineering pipeline ─────────────────────
+        - task_key: feature_engineering
+          depends_on:
+            - task_key: bronze_ingestion
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.churn_feature_engineering.id}
+            full_refresh: false
+
+        # ── Task 3: Feature engineering notebook (alternative to DLT) ────────
+        # This task is an alternative to the DLT path.  Comment out either
+        # task 2 or task 3 depending on whether you want DLT or notebook mode.
+        #
+        # - task_key: feature_engineering_notebook
+        #   depends_on:
+        #     - task_key: bronze_ingestion
+        #   job_cluster_key: churn_cluster
+        #   notebook_task:
+        #     notebook_path: /Workspace/${workspace.root_path}/files/notebooks/02-mlops-advanced/01_feature_engineering_refactored
+        #     base_parameters:
+        #       MLOPS_CONFIG_PATH: "${var.artifacts_volume}/configs/${bundle.target}.yaml"
+        #   libraries:
+        #     - whl: ${var.artifacts_volume}/wheels/mlops_utils-*.whl
+        #     - whl: ${var.artifacts_volume}/wheels/mlops_churn-*.whl
+
+    # -------------------------------------------------------------------------
+    # Job: Lightweight feature refresh (no full re-ingest)
+    # -------------------------------------------------------------------------
+    churn_feature_refresh_job:
+      name: "[${bundle.target}] Churn – Feature Refresh Only"
+
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"    # 06:00 UTC daily (after bronze loads)
+        timezone_id: UTC
+        pause_status: PAUSED
+
+      email_notifications:
+        on_failure:
+          - ${var.pipeline_sp}
+
+      tasks:
+        - task_key: feature_engineering
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.churn_feature_engineering.id}
+            full_refresh: false

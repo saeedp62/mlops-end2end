@@ -1,0 +1,66 @@
+# =============================================================================
+# configs/prod.yaml
+# Production environment configuration
+#
+# Data source: Unity Catalog cross-catalog table (read from LOB source catalog)
+# =============================================================================
+catalog: main
+db: dbdemos_mlops
+
+# Table names (without catalog/schema prefix)
+bronze_table: advanced_churn_bronze_customers
+feature_table: advanced_churn_feature_table
+label_table: advanced_churn_label_table
+
+# Model registry
+model_name: advanced_mlops_churn
+
+# Feature / label settings
+label_col: churn
+pos_label: "Yes"
+primary_keys:
+  - customer_id
+  - transaction_ts
+timeseries_col: transaction_ts
+
+# Training parameters
+train_ratio: 0.8
+rng_seed: 2025
+
+# MLflow experiment (shared path for batch jobs)
+experiment_path: /Shared/dbdemos/experiments/mlops-end2end
+experiment_name: dbdemos_advanced_mlops_churn_demo_experiment
+
+# ---------------------------------------------------------------------------
+# Data source: Unity Catalog cross-catalog table (production)
+#
+# The source table lives in a separate LOB catalog.  No data copy is needed –
+# Databricks reads it directly using the job principal's UC identity.
+#
+# source_table format: <source_catalog>.<source_schema>.<source_table>
+#
+# LOB catalog examples:
+#   retail_catalog.crm.customers           (Retail LOB)
+#   enterprise_catalog.finance.churn_data  (Finance LOB)
+#   telco_catalog.customer360.base         (Telecom LOB)
+#
+# The table must have SELECT privilege granted to the job service principal.
+# Grant example (run once by catalog owner):
+#   GRANT SELECT ON TABLE retail_catalog.crm.customers TO `job-sp@company.com`;
+# ---------------------------------------------------------------------------
+data_source:
+  type: unity_catalog_table
+  source_table: telco_catalog.customer360.base_customers   # override per deployment
+  normalize_columns: true   # set to false if source already uses snake_case
+
+# Online store – enabled in production
+online_store:
+  enabled: true
+  backend: databricks         # databricks | dynamodb | cosmosdb
+  endpoint_name: churn_online_features
+  # DynamoDB example (uncomment if using AWS):
+  # backend: dynamodb
+  # region: us-east-1
+  # write_secret_prefix: ml/feature-store
+  # read_secret_prefix: ml/feature-store
+  # table_name: churn_features_online

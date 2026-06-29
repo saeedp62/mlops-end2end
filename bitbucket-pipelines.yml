@@ -1,0 +1,277 @@
+# =============================================================================
+# bitbucket-pipelines.yml
+# Bitbucket Pipelines CI/CD for mlops-end2end-churn
+#
+# Mirrors the GitHub Actions workflow (.github/workflows/ci.yml) exactly:
+#
+#   pull-requests/**      → lint + unit tests + bundle validate  (no secrets)
+#   branches/develop      → + deploy staging + integration tests
+#   branches/main         → + deploy prod (manual trigger / approval env)
+#   custom (manual)       → choose target + optional integration tests
+#
+# Repository variables (Settings → Repository variables):
+#   DATABRICKS_HOST_STAGING       Staging workspace URL
+#   DATABRICKS_TOKEN_STAGING      Staging PAT or service principal token
+#   DATABRICKS_HOST_PROD          Production workspace URL
+#   DATABRICKS_TOKEN_PROD         Production PAT or service principal token
+#   PIPELINE_SP_CLIENT_ID_STAGING Service principal for staging pipelines
+#   PIPELINE_SP_CLIENT_ID_PROD    Service principal for prod pipelines
+#   CI_CLUSTER_ID_STAGING         Cluster ID for Databricks Connect integration tests
+#
+# Deployment environments (Settings → Deployments):
+#   staging    – automatic, used by develop branch
+#   production – manual approval required, used by main branch
+#
+# Docs: https://support.atlassian.com/bitbucket-cloud/docs/bitbucket-pipelines-configuration-reference/
+# =============================================================================
+
+# Default image: Python 3.11 slim + OpenJDK 17 (required for PySpark)
+# Using eclipse-temurin gives us Java without a manual apt-get layer.
+image: python:3.11-slim
+
+# ---------------------------------------------------------------------------
+# Reusable definitions
+# ---------------------------------------------------------------------------
+definitions:
+
+  caches:
+    pip: ~/.cache/pip
+    databricks-cli: ~/.databricks/
+
+  # ── Shared script snippets ─────────────────────────────────────────────────
+  script_fragments:
+
+    # Install Java 17 (required for local PySpark in unit tests)
+    - &install_java |
+      apt-get update -qq && apt-get install -y -qq openjdk-17-jdk-headless
+      export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+      export PATH="$JAVA_HOME/bin:$PATH"
+
+    # Install both packages in editable mode (for unit/integration tests)
+    - &install_packages |
+      pip install --quiet --upgrade pip
+      pip install --quiet -e "packages/mlops_utils[dev]"
+      pip install --quiet -e ".[dev]"
+
+    # Install only lint tools (no Spark needed)
+    - &install_lint |
+      pip install --quiet --upgrade pip
+      pip install --quiet ruff mypy types-PyYAML types-requests
+
+    # Install Databricks CLI (official script)
+    - &install_databricks_cli |
+      curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+      export PATH="$HOME/.databricks/bin:$PATH"
+
+    # Build both Python wheels
+    - &build_wheels |
+      pip install --quiet build
+      python -m build packages/mlops_utils/ --wheel
+      python -m build . --wheel
+
+  # ── Step templates ──────────────────────────────────────────────────────────
+  steps:
+
+    # ── Lint & type check ────────────────────────────────────────────────────
+    - step: &lint
+        name: "Lint & Type Check"
+        caches: [pip]
+        script:
+          - *install_lint
+          - ruff check packages/mlops_utils/src/ src/ pipelines/ tests/
+          - ruff format --check packages/mlops_utils/src/ src/ pipelines/ tests/
+          # mypy is advisory – annotated incrementally
+          - mypy packages/mlops_utils/src/mlops_utils/ || true
+          - mypy src/churn/ || true
+
+    # ── Unit tests (Python 3.11) ──────────────────────────────────────────────
+    - step: &unit-tests
+        name: "Unit Tests (Python 3.11)"
+        caches: [pip]
+        script:
+          - *install_java
+          - export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          - *install_packages
+          - >
+            pytest tests/unit/
+            -v
+            --tb=short
+            -m "not integration"
+            --cov=src/churn
+            --cov=packages/mlops_utils/src/mlops_utils
+            --cov-report=xml:coverage.xml
+            --cov-report=term-missing
+        artifacts:
+          - coverage.xml
+
+    # ── Unit tests (Python 3.10 – separate image) ─────────────────────────────
+    - step: &unit-tests-py310
+        name: "Unit Tests (Python 3.10)"
+        image: python:3.10-slim
+        caches: [pip]
+        script:
+          - *install_java
+          - export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          - *install_packages
+          - >
+            pytest tests/unit/
+            -v
+            --tb=short
+            -m "not integration"
+
+    # ── Build wheels + validate bundle ────────────────────────────────────────
+    - step: &build-and-validate
+        name: "Build Wheels & Validate Bundle"
+        caches: [pip, databricks-cli]
+        script:
+          - *build_wheels
+          - ls -la packages/mlops_utils/dist/ dist/
+          # Install Databricks CLI for bundle validation (no workspace auth needed)
+          - *install_databricks_cli
+          - export PATH="$HOME/.databricks/bin:$PATH"
+          # Validate bundle schema with a placeholder host (no real auth required)
+          - DATABRICKS_HOST=https://placeholder.azuredatabricks.net
+            DATABRICKS_TOKEN=placeholder
+            databricks bundle validate --target dev
+        artifacts:
+          # Pass wheels to downstream deploy steps in this pipeline run
+          - packages/mlops_utils/dist/*.whl
+          - dist/*.whl
+
+    # ── Deploy to staging ─────────────────────────────────────────────────────
+    - step: &deploy-staging
+        name: "Deploy → Staging"
+        deployment: staging       # links to Bitbucket Deployment environment
+        caches: [pip, databricks-cli]
+        script:
+          - *install_databricks_cli
+          - export PATH="$HOME/.databricks/bin:$PATH"
+          - export DATABRICKS_HOST=$DATABRICKS_HOST_STAGING
+          - export DATABRICKS_TOKEN=$DATABRICKS_TOKEN_STAGING
+          # Deploy bundle (uploads wheels, syncs pipeline files, creates/updates DLT + jobs)
+          - >
+            databricks bundle deploy
+            --target staging
+            --var="DATABRICKS_HOST=$DATABRICKS_HOST_STAGING"
+            --var="PIPELINE_SP_CLIENT_ID=$PIPELINE_SP_CLIENT_ID_STAGING"
+          # Upload the staging config YAML to the UC Volume
+          - >
+            databricks fs cp configs/dev.yaml
+            dbfs:/Volumes/main/dbdemos_mlops_staging/bundle/configs/staging.yaml
+            --overwrite
+          # Print the deployed resource summary
+          - databricks bundle summary --target staging
+
+    # ── Integration tests (Databricks Connect → staging cluster) ─────────────
+    - step: &integration-tests
+        name: "Integration Tests (Staging Cluster)"
+        caches: [pip]
+        script:
+          - *install_java
+          - export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          - *install_packages
+          - pip install --quiet "databricks-connect>=14.0"
+          # Configure Databricks Connect to route Spark to the staging cluster
+          - export DATABRICKS_HOST=$DATABRICKS_HOST_STAGING
+          - export DATABRICKS_TOKEN=$DATABRICKS_TOKEN_STAGING
+          - databricks configure --host $DATABRICKS_HOST --token $DATABRICKS_TOKEN
+          - databricks-connect configure
+            --host $DATABRICKS_HOST
+            --token $DATABRICKS_TOKEN
+            --cluster-id $CI_CLUSTER_ID_STAGING
+          # Run integration test suite
+          - >
+            pytest tests/integration/
+            -v
+            --tb=short
+            -m integration
+            --no-header
+
+    # ── Deploy to production (manual trigger) ─────────────────────────────────
+    - step: &deploy-prod
+        name: "Deploy → Production"
+        deployment: production     # Bitbucket deployment environment with approval
+        trigger: manual            # ← pause here and require a human to click "Run"
+        caches: [pip, databricks-cli]
+        script:
+          - *install_databricks_cli
+          - export PATH="$HOME/.databricks/bin:$PATH"
+          - export DATABRICKS_HOST=$DATABRICKS_HOST_PROD
+          - export DATABRICKS_TOKEN=$DATABRICKS_TOKEN_PROD
+          - >
+            databricks bundle deploy
+            --target prod
+            --var="DATABRICKS_HOST=$DATABRICKS_HOST_PROD"
+            --var="PIPELINE_SP_CLIENT_ID_PROD=$PIPELINE_SP_CLIENT_ID_PROD"
+          # Upload prod config YAML to the production Volume
+          - >
+            databricks fs cp configs/prod.yaml
+            dbfs:/Volumes/main/dbdemos_mlops/bundle/configs/prod.yaml
+            --overwrite
+          - databricks bundle summary --target prod
+          # Tag the release in Bitbucket (requires write access to the repo)
+          - |
+            TAG="deploy-prod-$(date -u +%Y%m%d-%H%M%S)"
+            git config user.email "ci@bitbucket.org"
+            git config user.name  "Bitbucket Pipelines"
+            git tag -a "$TAG" -m "Production deployment from pipeline #$BITBUCKET_BUILD_NUMBER"
+            git push "https://x-token-auth:${BITBUCKET_REPO_TOKEN}@bitbucket.org/${BITBUCKET_REPO_FULL_NAME}.git" "$TAG"
+
+# ---------------------------------------------------------------------------
+# Pipeline triggers
+# ---------------------------------------------------------------------------
+pipelines:
+
+  # ── Pull requests (any branch → any target) ────────────────────────────────
+  pull-requests:
+    '**':
+      - parallel:
+          - step: *lint
+          - step: *unit-tests
+          - step: *unit-tests-py310
+      - step: *build-and-validate
+
+  # ── Branch-specific pipelines ──────────────────────────────────────────────
+  branches:
+
+    # develop → auto-deploy to staging + integration tests
+    develop:
+      - parallel:
+          - step: *lint
+          - step: *unit-tests
+          - step: *unit-tests-py310
+      - step: *build-and-validate
+      - step: *deploy-staging
+      - step: *integration-tests
+
+    # main → deploy to prod (manual trigger/approval)
+    main:
+      - parallel:
+          - step: *lint
+          - step: *unit-tests
+          - step: *unit-tests-py310
+      - step: *build-and-validate
+      - step: *deploy-prod    # manual approval gate
+
+  # ── Manual / custom pipelines ──────────────────────────────────────────────
+  custom:
+
+    # Force a staging deploy from any branch
+    deploy-staging-manual:
+      - variables:
+          - name: CONFIRM
+            description: "Type 'yes' to confirm staging deploy"
+      - step: *build-and-validate
+      - step: *deploy-staging
+
+    # Force a production deploy from any branch (still requires manual trigger)
+    deploy-prod-manual:
+      - variables:
+          - name: CONFIRM
+            description: "Type 'yes' to confirm production deploy (irreversible)"
+      - step: *build-and-validate
+      - step: *deploy-prod
+
+    # Run integration tests on demand against the staging cluster
+    integration-tests-manual:
+      - step: *integration-tests

@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mlops-churn"
+version = "0.1.0"
+description = "Telco customer churn MLOps pipeline – data sourcing, feature engineering, and model training orchestration."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "mlops-utils>=0.1.0",
+    "pyspark>=3.5",
+    "mlflow>=3.3",
+    "databricks-feature-engineering>=0.13",
+    "scikit-learn>=1.4",
+    "lightgbm>=4.0",
+    "optuna>=4.4",
+    "pandera>=0.18",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "types-PyYAML",
+    "types-requests",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/churn"]
+
+[tool.ruff]
+src = ["src", "pipelines", "tests"]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "ANN"]
+ignore = ["ANN101", "ANN102", "ANN401"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+exclude = ["tests/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short --cov=src/churn --cov-report=term-missing"
+markers = [
+    "integration: marks tests that require a live Databricks cluster (deselect with '-m not integration')",
+]
