@@ -59,7 +59,8 @@ cfg = load_churn_config(config_path)
 
 print(f"Pipeline configuration:")
 print(f"  Catalog:           {cfg.catalog}")
-print(f"  Schema:            {cfg.db}")
+print(f"  Training schema:   {cfg.schemas.training_datasets}")
+print(f"  Feature schema:    {cfg.schemas.offline_features}")
 print(f"  Source type:       {cfg.data_source.type}")
 if cfg.data_source.type == "unity_catalog_table":
     print(f"  Source table:      {cfg.data_source.source_table}")
@@ -190,7 +191,7 @@ display(
 # COMMAND ----------
 
 spark.sql(f"""
-  CREATE OR REPLACE FUNCTION {cfg.catalog}.{cfg.db}.avg_price_increase(
+  CREATE OR REPLACE FUNCTION {cfg.catalog}.{cfg.schemas.offline_features}.avg_price_increase(
     monthly_charges_in DOUBLE,
     tenure_in         DOUBLE,
     total_charges_in  DOUBLE
@@ -206,7 +207,7 @@ spark.sql(f"""
   $$
 """)
 
-print(f"Feature function created: {cfg.catalog}.{cfg.db}.avg_price_increase")
+print(f"Feature function created: {cfg.catalog}.{cfg.schemas.offline_features}.avg_price_increase")
 
 # COMMAND ----------
 

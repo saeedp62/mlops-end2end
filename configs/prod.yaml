@@ -3,9 +3,24 @@
 # Production environment configuration
 #
 # Data source: Unity Catalog cross-catalog table (read from LOB source catalog)
+#
+# Schema layout (lighthouse_bkk6_analytics catalog):
+#   training_datasets  – bronze ingestion + label/split tables
+#   offline_features   – historical feature tables for training & batch inference
+#   online_features    – real-time serving features
+#   ml_models          – registered model assets
+#   model_predictions  – batch inference / scoring outputs
+#   ml_monitoring      – drift, performance, and operational metrics
 # =============================================================================
-catalog: main
-db: dbdemos_mlops
+catalog: lighthouse_bkk6_analytics
+
+schemas:
+  training_datasets: training_datasets
+  offline_features:  offline_features
+  online_features:   online_features
+  ml_models:         ml_models
+  model_predictions: model_predictions
+  ml_monitoring:     ml_monitoring
 
 # Table names (without catalog/schema prefix)
 bronze_table: advanced_churn_bronze_customers
@@ -28,8 +43,8 @@ train_ratio: 0.8
 rng_seed: 2025
 
 # MLflow experiment (shared path for batch jobs)
-experiment_path: /Shared/dbdemos/experiments/mlops-end2end
-experiment_name: dbdemos_advanced_mlops_churn_demo_experiment
+experiment_path: /Shared/lighthouse_bkk6_analytics/experiments/mlops-end2end
+experiment_name: advanced_mlops_churn_experiment
 
 # ---------------------------------------------------------------------------
 # Data source: Unity Catalog cross-catalog table (production)

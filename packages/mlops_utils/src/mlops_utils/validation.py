@@ -255,6 +255,7 @@ class ModelValidator:
         self,
         inference_df: Any,
         *,
+        fe: "Optional[Any]" = None,
         label_col: str,
         env_manager: str = "virtualenv",
     ) -> tuple[str, CheckFn]:
@@ -264,6 +265,8 @@ class ModelValidator:
         ----------
         inference_df:
             Spark DataFrame with at minimum the lookup keys + label column.
+        fe:
+            FeatureEngineeringClient instance. Created automatically if None.
         label_col:
             Name of the label column (used for result_type lookup).
         env_manager:
@@ -272,13 +275,16 @@ class ModelValidator:
         model_name, version, client = self.model_name, self.version, self.client
 
         def _fn() -> tuple[bool, str]:
-            from databricks.feature_engineering import FeatureEngineeringClient
-
-            fe = FeatureEngineeringClient()
+            if fe is None:
+                from databricks.feature_engineering import FeatureEngineeringClient
+                fe_client = FeatureEngineeringClient()
+            else:
+                fe_client = fe
+                
             model_uri = f"models:/{model_name}/{version}"
             try:
                 result_type = inference_df.schema[label_col].dataType
-                preds = fe.score_batch(
+                preds = fe_client.score_batch(
                     df=inference_df,
                     model_uri=model_uri,
                     result_type=result_type,

@@ -16,6 +16,13 @@ Run once per target environment by a catalog admin before the first deploy:
     python scripts/bootstrap_volumes.py --target staging
     python scripts/bootstrap_volumes.py --target prod
 
+The volume is always created inside the ``training_datasets`` schema of the
+``lighthouse_bkk6_analytics`` catalog, producing the path::
+
+    /Volumes/lighthouse_bkk6_analytics/training_datasets/bundle
+
+This matches the ``artifacts_volume`` variable in ``databricks.yml``.
+
 Requires: ``databricks-sdk`` (pip install databricks-sdk)
 """
 
@@ -28,24 +35,32 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Target → Volume mapping
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# The bundle volume always lives at:
+#   /Volumes/<catalog>/<schema>/<volume>
+# = /Volumes/lighthouse_bkk6_analytics/training_datasets/bundle
+#
+# This matches artifacts_volume in databricks.yml:
+#   /Volumes/lighthouse_bkk6_analytics/training_datasets/bundle
+# ---------------------------------------------------------------------------
 TARGETS = {
     "dev": {
-        "catalog": "main",
-        "schema": "dbdemos_mlops_dev",
+        "catalog": "lighthouse_bkk6_analytics",
+        "schema": "training_datasets",   # bundle volume lives here
         "volume": "bundle",
         "config_src": "configs/dev.yaml",
         "config_dest": "dev.yaml",
     },
     "staging": {
-        "catalog": "main",
-        "schema": "dbdemos_mlops_staging",
+        "catalog": "lighthouse_bkk6_analytics",
+        "schema": "training_datasets",   # same schema; CI environment is isolated by workspace
         "volume": "bundle",
         "config_src": "configs/dev.yaml",   # staging uses dev config as base; CI overwrites
         "config_dest": "staging.yaml",
     },
     "prod": {
-        "catalog": "main",
-        "schema": "dbdemos_mlops",
+        "catalog": "lighthouse_bkk6_analytics",
+        "schema": "training_datasets",
         "volume": "bundle",
         "config_src": "configs/prod.yaml",
         "config_dest": "prod.yaml",

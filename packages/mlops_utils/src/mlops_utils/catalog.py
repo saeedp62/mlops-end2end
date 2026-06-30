@@ -11,7 +11,11 @@ Public API
 ----------
 ::
 
-    from mlops_utils.catalog import setup_catalog_and_schema, drop_and_recreate_schema
+    from mlops_utils.catalog import (
+        setup_catalog_and_schema,
+        ensure_mlops_schemas,
+        drop_and_recreate_schema,
+    )
 """
 
 from __future__ import annotations
@@ -116,6 +120,99 @@ def drop_and_recreate_schema(
         )
     spark.sql(f"DROP SCHEMA IF EXISTS `{catalog}`.`{schema}` CASCADE")
     setup_catalog_and_schema(spark, catalog, schema, volume_name=volume_name)
+
+
+def ensure_mlops_schemas(
+    spark: "pyspark.sql.SparkSession",  # type: ignore[name-defined]  # noqa: F821
+    catalog: str,
+    schemas: "dict[str, str]",
+    *,
+    grant_all_to: "Optional[str]" = None,
+) -> None:
+    """Idempotently create all MLOps schemas in *catalog*.
+
+    This is the **shared** bootstrap entry point used by every ML use-case
+    (churn, propensity, LTV, …).  It is decoupled from any single use-case
+    config and works with any ``{schema_name: comment}`` mapping.
+
+    DLT pipelines reference a ``target:`` schema that must already exist in
+    Unity Catalog before the pipeline starts.  Calling this function as
+    **Task 0** of the Databricks job ensures schemas are present on every
+    deployment, including the very first run against a brand-new catalog.
+
+    Parameters
+    ----------
+    spark:
+        Active SparkSession with Unity Catalog enabled.
+    catalog:
+        Name of the Unity Catalog that owns all MLOps schemas
+        (e.g. ``"lighthouse_bkk6_analytics"``).
+    schemas:
+        Mapping of ``{schema_name: comment}`` for every schema to create.
+        Schema names must use lowercase snake_case per the MLOps naming
+        standard.
+
+        Typical MLOps schema layout::
+
+            {
+                "training_datasets":  "Bronze ingestion + label/split tables.",
+                "offline_features":   "Historical feature tables.",
+                "online_features":    "Real-time serving features.",
+                "ml_models":          "Registered model assets.",
+                "model_predictions":  "Batch inference outputs.",
+                "ml_monitoring":      "Drift and operational metrics.",
+            }
+
+    grant_all_to:
+        Optional principal (group or user e-mail) that receives
+        ``CREATE, USAGE`` on every schema that was created.
+
+    Example
+    -------
+    ::
+
+        from mlops_utils.catalog import ensure_mlops_schemas
+
+        ensure_mlops_schemas(
+            spark,
+            catalog="lighthouse_bkk6_analytics",
+            schemas={
+                "training_datasets": "Bronze + label tables.",
+                "offline_features":  "Feature tables.",
+                "online_features":   "Serving features.",
+                "ml_models":         "Model registry.",
+                "model_predictions": "Batch inference outputs.",
+                "ml_monitoring":     "Monitoring metrics.",
+            },
+        )
+    """
+    logger.info(
+        "Ensuring %d MLOps schemas in catalog '%s'…", len(schemas), catalog
+    )
+
+    # Ensure the catalog itself exists (idempotent)
+    spark.sql(f"CREATE CATALOG IF NOT EXISTS `{catalog}`")
+    spark.sql(f"USE CATALOG `{catalog}`")
+
+    for schema, comment in schemas.items():
+        fqn = f"`{catalog}`.`{schema}`"
+        logger.info("  CREATE SCHEMA IF NOT EXISTS %s", fqn)
+        spark.sql(
+            f"CREATE SCHEMA IF NOT EXISTS {fqn} "
+            f"COMMENT {repr(comment)}"
+        )
+        if grant_all_to:
+            _safe_sql(
+                spark,
+                f"GRANT CREATE, USAGE ON SCHEMA {fqn} TO `{grant_all_to}`",
+            )
+        logger.info("  schema %s ready", fqn)
+
+    logger.info(
+        "Schema bootstrap complete: %d schemas ensured in '%s'.",
+        len(schemas),
+        catalog,
+    )
 
 
 def set_table_owner(

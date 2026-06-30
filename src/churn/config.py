@@ -36,10 +36,16 @@ Three source types are supported, controlled by ``data_source.type``:
           type: http_csv
           url: https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv
 
-Full example YAML::
+Full example YAML (new multi-schema layout)::
 
-    catalog: main
-    db: dbdemos_mlops
+    catalog: lighthouse_bkk6_analytics
+    schemas:
+      training_datasets: training_datasets   # bronze + label tables
+      offline_features:  offline_features    # feature table
+      online_features:   online_features     # online serving
+      ml_models:         ml_models           # registered models
+      model_predictions: model_predictions   # batch inference outputs
+      ml_monitoring:     ml_monitoring       # monitoring metrics
     bronze_table: advanced_churn_bronze_customers
     feature_table: advanced_churn_feature_table
     label_table: advanced_churn_label_table
@@ -52,11 +58,11 @@ Full example YAML::
     timeseries_col: transaction_ts
     train_ratio: 0.8
     rng_seed: 2025
-    experiment_path: /Users/{current_user}/dbdemos_mlops
-    experiment_name: dbdemos_advanced_mlops_churn_demo_experiment
+    experiment_path: /Shared/lighthouse_bkk6_analytics/experiments/mlops-end2end
+    experiment_name: advanced_mlops_churn_experiment
     data_source:
       type: volume_csv
-      volume_path: /Volumes/main/shared_data/telco/Telco-Customer-Churn.csv
+      volume_path: /Volumes/lighthouse_bkk6_analytics/training_datasets/telco/Telco-Customer-Churn.csv
     online_store:
       enabled: false
       backend: databricks
@@ -67,7 +73,8 @@ Usage::
     from churn.config import ChurnConfig, load_churn_config
 
     cfg = load_churn_config("configs/dev.yaml")
-    print(cfg.full_feature_table)   # "main.dbdemos_mlops.advanced_churn_feature_table"
+    print(cfg.full_feature_table)   # "lighthouse_bkk6_analytics.offline_features.advanced_churn_feature_table"
+    print(cfg.full_bronze_table)    # "lighthouse_bkk6_analytics.training_datasets.advanced_churn_bronze_customers"
     print(cfg.data_source.type)     # "volume_csv"
 """
 
@@ -131,6 +138,90 @@ class DataSourceConfig:
 
 
 @dataclass
+class SchemaConfig:
+    """Unity Catalog schema names for each MLOps data lifecycle stage.
+
+    Schema naming follows business-purpose conventions (lowercase snake_case).
+    The same schema names are used across all environments; environment
+    isolation is achieved via catalog/workspace separation.
+
+    Attributes
+    ----------
+    training_datasets:
+        Stores bronze ingestion tables and curated label/split datasets
+        used for model training and validation.
+    offline_features:
+        Stores historical feature tables.  Supports model training and
+        batch inference use cases.
+    online_features:
+        Stores features required for real-time, low-latency model serving.
+    ml_models:
+        Stores registered model assets and supports lifecycle management.
+    model_predictions:
+        Stores batch inference outputs and model scoring results.
+    ml_monitoring:
+        Stores model performance metrics, drift monitoring, and operational
+        ML metrics.
+    """
+
+    training_datasets: str = "training_datasets"
+    offline_features:  str = "offline_features"
+    online_features:   str = "online_features"
+    ml_models:         str = "ml_models"
+    model_predictions: str = "model_predictions"
+    ml_monitoring:     str = "ml_monitoring"
+
+    @property
+    def all_schemas(self) -> list[str]:
+        """Return all schema names (used by the bootstrap utility)."""
+        return [
+            self.training_datasets,
+            self.offline_features,
+            self.online_features,
+            self.ml_models,
+            self.model_predictions,
+            self.ml_monitoring,
+        ]
+
+    def as_comments_dict(self) -> dict[str, str]:
+        """Return ``{schema_name: comment}`` for use with ``mlops_utils.catalog.ensure_mlops_schemas``.
+
+        This keeps schema descriptions co-located with the config (single source
+        of truth) while keeping ``mlops_utils`` decoupled from any use-case.
+
+        Example::
+
+            from mlops_utils.catalog import ensure_mlops_schemas
+
+            ensure_mlops_schemas(spark, cfg.catalog, cfg.schemas.as_comments_dict())
+        """
+        return {
+            self.training_datasets: (
+                "Bronze ingestion tables and curated label/split datasets "
+                "used for model training and validation."
+            ),
+            self.offline_features: (
+                "Historical feature tables supporting model training "
+                "and batch inference use cases."
+            ),
+            self.online_features: (
+                "Features required for real-time, low-latency model serving."
+            ),
+            self.ml_models: (
+                "Model-related assets supporting lifecycle management "
+                "and model registration."
+            ),
+            self.model_predictions: (
+                "Batch inference outputs and model scoring results."
+            ),
+            self.ml_monitoring: (
+                "Model performance metrics, drift monitoring, and "
+                "operational ML metrics."
+            ),
+        }
+
+
+@dataclass
 class OnlineStoreConfig:
     """Online Feature Store serving configuration."""
 
@@ -148,18 +239,24 @@ class ChurnConfig:
     Attributes
     ----------
     catalog:
-        Unity Catalog name (destination for features, labels, and models).
-    db:
-        Schema / database name.
+        Unity Catalog name.  All schemas below are created inside this catalog.
+        Environment isolation is achieved by pointing dev/staging/prod at
+        different catalogs (or workspaces), NOT by varying schema names.
+    schemas:
+        Per-lifecycle-stage schema names (see :class:`SchemaConfig`).
+        The same schema names are used in every environment.
     bronze_table:
-        Name of the raw (bronze) customer table (without catalog/schema prefix).
-        The data is written here after being read from ``data_source``.
+        Name of the raw (bronze) ingestion table (no catalog/schema prefix).
+        Lands in ``catalog.schemas.training_datasets``.
     feature_table:
-        Name of the Unity Catalog feature table.
+        Name of the offline feature table (no catalog/schema prefix).
+        Lands in ``catalog.schemas.offline_features``.
     label_table:
-        Name of the table storing ground-truth labels and train/test splits.
+        Name of the label / train-test split table (no catalog/schema prefix).
+        Lands in ``catalog.schemas.training_datasets``.
     model_name:
         Registered model name in Unity Catalog.
+        Lands in ``catalog.schemas.ml_models``.
     label_col:
         Target label column name.
     pos_label:
@@ -182,8 +279,8 @@ class ChurnConfig:
         Online Feature Store configuration.
     """
 
-    catalog: str = "main"
-    db: str = "dbdemos_mlops"
+    catalog: str = "lighthouse_bkk6_analytics"
+    schemas: SchemaConfig = field(default_factory=SchemaConfig)
     bronze_table: str = "advanced_churn_bronze_customers"
     feature_table: str = "advanced_churn_feature_table"
     label_table: str = "advanced_churn_label_table"
@@ -194,34 +291,34 @@ class ChurnConfig:
     timeseries_col: str = "transaction_ts"
     train_ratio: float = 0.8
     rng_seed: int = 2025
-    experiment_path: str = "/Users/mlops_user/dbdemos_mlops"
-    experiment_name: str = "dbdemos_advanced_mlops_churn_demo_experiment"
+    experiment_path: str = "/Shared/lighthouse_bkk6_analytics/experiments/mlops-end2end"
+    experiment_name: str = "advanced_mlops_churn_experiment"
     data_source: DataSourceConfig = field(default_factory=DataSourceConfig)
     online_store: OnlineStoreConfig = field(default_factory=OnlineStoreConfig)
 
     # -----------------------------------------------------------------------
-    # Derived properties (computed from base fields)
+    # Derived properties — each table resolves to its correct schema
     # -----------------------------------------------------------------------
 
     @property
     def full_bronze_table(self) -> str:
-        """Fully-qualified bronze table name."""
-        return f"{self.catalog}.{self.db}.{self.bronze_table}"
+        """Fully-qualified bronze table name (lives in training_datasets schema)."""
+        return f"{self.catalog}.{self.schemas.training_datasets}.{self.bronze_table}"
 
     @property
     def full_feature_table(self) -> str:
-        """Fully-qualified feature table name."""
-        return f"{self.catalog}.{self.db}.{self.feature_table}"
+        """Fully-qualified offline feature table name (lives in offline_features schema)."""
+        return f"{self.catalog}.{self.schemas.offline_features}.{self.feature_table}"
 
     @property
     def full_label_table(self) -> str:
-        """Fully-qualified label table name."""
-        return f"{self.catalog}.{self.db}.{self.label_table}"
+        """Fully-qualified label table name (lives in training_datasets schema)."""
+        return f"{self.catalog}.{self.schemas.training_datasets}.{self.label_table}"
 
     @property
     def full_model_name(self) -> str:
-        """Fully-qualified model name registered in Unity Catalog."""
-        return f"{self.catalog}.{self.db}.{self.model_name}"
+        """Fully-qualified model name registered in Unity Catalog (lives in ml_models schema)."""
+        return f"{self.catalog}.{self.schemas.ml_models}.{self.model_name}"
 
     @property
     def full_experiment_name(self) -> str:
@@ -268,6 +365,19 @@ def load_churn_config(
     else:
         raw = load_config(config_path)
 
+    # Parse schemas sub-dict.
+    # 'schemas:' block is required for the multi-schema layout.
+    # If absent, all six schemas fall back to their SchemaConfig dataclass defaults.
+    schemas_raw = raw.pop("schemas", {})
+    schemas_cfg = SchemaConfig(
+        training_datasets=schemas_raw.get("training_datasets", SchemaConfig.training_datasets),
+        offline_features=schemas_raw.get("offline_features", SchemaConfig.offline_features),
+        online_features=schemas_raw.get("online_features", SchemaConfig.online_features),
+        ml_models=schemas_raw.get("ml_models", SchemaConfig.ml_models),
+        model_predictions=schemas_raw.get("model_predictions", SchemaConfig.model_predictions),
+        ml_monitoring=schemas_raw.get("ml_monitoring", SchemaConfig.ml_monitoring),
+    )
+
     # Parse data_source sub-dict
     ds_raw = raw.pop("data_source", {})
     ds_cfg = DataSourceConfig(
@@ -294,8 +404,8 @@ def load_churn_config(
         pk_raw = [k.strip() for k in pk_raw.split(",")]
 
     return ChurnConfig(
-        catalog=raw.get("catalog", "main"),
-        db=raw.get("db", "dbdemos_mlops"),
+        catalog=raw.get("catalog", "lighthouse_bkk6_analytics"),
+        schemas=schemas_cfg,
         bronze_table=raw.get("bronze_table", "advanced_churn_bronze_customers"),
         feature_table=raw.get("feature_table", "advanced_churn_feature_table"),
         label_table=raw.get("label_table", "advanced_churn_label_table"),
@@ -306,8 +416,11 @@ def load_churn_config(
         timeseries_col=raw.get("timeseries_col", "transaction_ts"),
         train_ratio=float(raw.get("train_ratio", 0.8)),
         rng_seed=int(raw.get("rng_seed", 2025)),
-        experiment_path=raw.get("experiment_path", "/Users/mlops_user/dbdemos_mlops"),
-        experiment_name=raw.get("experiment_name", "dbdemos_advanced_mlops_churn_demo_experiment"),
+        experiment_path=raw.get(
+            "experiment_path",
+            "/Shared/lighthouse_bkk6_analytics/experiments/mlops-end2end",
+        ),
+        experiment_name=raw.get("experiment_name", "advanced_mlops_churn_experiment"),
         data_source=ds_cfg,
         online_store=online_cfg,
     )

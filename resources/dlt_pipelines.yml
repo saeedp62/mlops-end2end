@@ -30,7 +30,7 @@ resources:
       serverless: true                  # set to false + add clusters: block for classic
 
       catalog: ${var.catalog}
-      target: ${var.db}                 # schema where DLT materialises tables
+      target: ${var.training_datasets_schema}    # bronze + label tables land here
 
       # Pipeline-level configuration passed to the code via spark.conf.get()
       configuration:
@@ -69,7 +69,7 @@ resources:
       serverless: true
 
       catalog: ${var.catalog}
-      target: ${var.db}
+      target: ${var.offline_features_schema}    # feature table lands here
 
       configuration:
         config_path: ${var.artifacts_volume}/configs/${bundle.target}.yaml

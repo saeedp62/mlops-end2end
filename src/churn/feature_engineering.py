@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame as SparkDataFrame
@@ -249,3 +249,41 @@ def get_latest_label_per_customer(
             last("split").alias("split"),
         )
     )
+
+
+def build_churn_feature_lookups(cfg: "Any", fsm: "Any" = None) -> list["Any"]:
+    """Return standard FeatureLookup + FeatureFunction specs from a ChurnConfig."""
+    from databricks.feature_engineering import FeatureFunction
+
+    lookups = []
+    if fsm:
+        lookups.extend(
+            fsm.create_lookups(
+                table_name=cfg.feature_table,
+                lookup_keys=list(cfg.primary_keys),
+                timestamp_lookup_key=cfg.timeseries_col,
+            )
+        )
+    else:
+        from databricks.feature_engineering import FeatureLookup
+        lookups.append(
+            FeatureLookup(
+                table_name=f"{cfg.catalog}.{cfg.schemas.offline_features}.{cfg.feature_table}",
+                lookup_key=list(cfg.primary_keys),
+                timestamp_lookup_key=cfg.timeseries_col,
+            )
+        )
+
+    lookups.append(
+        FeatureFunction(
+            udf_name=f"{cfg.catalog}.{cfg.schemas.offline_features}.avg_price_increase",
+            output_name="avg_price_increase",
+            input_bindings={
+                "monthly_charges_in": "monthly_charges",
+                "tenure_in": "tenure_months",
+                "total_charges_in": "total_charges",
+            },
+        )
+    )
+    
+    return lookups

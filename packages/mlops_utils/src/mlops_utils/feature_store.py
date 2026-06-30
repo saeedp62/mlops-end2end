@@ -18,6 +18,7 @@ Public API
 ::
 
     from mlops_utils.feature_store import (
+        FeatureStoreManager,
         create_or_replace_feature_table,
         write_feature_table,
         build_training_set,
@@ -29,7 +30,10 @@ Public API
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
+
+from mlops_utils._retry import with_retry
 
 if TYPE_CHECKING:
     # These are only imported for type checking; the actual runtime imports
@@ -38,6 +42,202 @@ if TYPE_CHECKING:
     from pyspark.sql import DataFrame
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# FeatureStoreManager Facade
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FeatureStoreManager:
+    """Config-aware facade over FeatureEngineeringClient.
+
+    Binds a config (or any object with .catalog + .schemas) so callers
+    never have to manually compose fully-qualified names.
+
+    Usage
+    -----
+    ::
+
+        from mlops_utils.feature_store import FeatureStoreManager
+
+        fsm = FeatureStoreManager.from_config(cfg)
+
+        fsm.create_or_replace(cfg.feature_table, df, primary_keys=cfg.primary_keys)
+        fsm.write(cfg.feature_table, df)
+        training_set = fsm.build_training_set(labels_df, lookups, label_col="churn")
+    """
+
+    fe: "FeatureEngineeringClient"
+    catalog: str
+    offline_schema: str
+    online_schema: str
+    dry_run: bool = False
+
+    @classmethod
+    def from_config(cls, cfg: Any, dry_run: bool = False) -> "FeatureStoreManager":
+        from databricks.feature_engineering import FeatureEngineeringClient
+        return cls(
+            fe=FeatureEngineeringClient(),
+            catalog=cfg.catalog,
+            offline_schema=cfg.schemas.offline_features,
+            online_schema=cfg.schemas.online_features,
+            dry_run=dry_run,
+        )
+
+    def fqn(self, table_name: str, *, use_online_schema: bool = False) -> str:
+        """Return fully-qualified name: catalog.schema.table_name."""
+        s = self.online_schema if use_online_schema else self.offline_schema
+        return f"{self.catalog}.{s}.{table_name}"
+
+    def create_or_replace(
+        self,
+        table_name: str,
+        df: "DataFrame",
+        primary_keys: list[str],
+        *,
+        timeseries_columns: Optional[str | list[str]] = None,
+        description: str = "",
+        tags: Optional[dict[str, str]] = None,
+        raise_on_drop_error: bool = False,
+    ) -> Any:
+        if self.dry_run:
+            logger.info("[DRY RUN] Would create/replace feature table '%s'", self.fqn(table_name))
+            return None
+            
+        return create_or_replace_feature_table(
+            self.fe,
+            name=self.fqn(table_name),
+            df=df,
+            primary_keys=primary_keys,
+            timeseries_columns=timeseries_columns,
+            description=description,
+            tags=tags,
+            raise_on_drop_error=raise_on_drop_error,
+        )
+
+    def write(self, table_name: str, df: "DataFrame", *, mode: str = "merge") -> None:
+        if self.dry_run:
+            logger.info("[DRY RUN] Would write feature table '%s' (mode=%s)", self.fqn(table_name), mode)
+            return
+            
+        write_feature_table(self.fe, name=self.fqn(table_name), df=df, mode=mode)
+
+    def reset_and_write(self, table_name: str, df: "DataFrame", primary_keys: list[str], **kwargs: Any) -> None:
+        """Drop-and-recreate then write — the safe 'overwrite' pattern."""
+        self.create_or_replace(table_name, df, primary_keys, **kwargs)
+        self.write(table_name, df)
+
+    def build_training_set(
+        self,
+        labels_df: "DataFrame",
+        feature_lookups: list[Any],
+        label_col: str,
+        *,
+        exclude_columns: Optional[list[str]] = None,
+    ) -> "DataFrame":
+        """Build training set and materialise it immediately."""
+        ts = build_training_set(
+            self.fe, 
+            labels_df, 
+            feature_lookups, 
+            label_col,
+            exclude_columns=exclude_columns
+        )
+        return ts.load_df()
+
+    def score_batch(self, df: "DataFrame", model_uri: str, **kwargs: Any) -> "DataFrame":
+        return score_batch_wrapper(self.fe, df, model_uri, **kwargs)
+
+    def create_lookups(
+        self,
+        table_name: str,
+        lookup_keys: list[str],
+        feature_names: Optional[list[str]] = None,
+        *,
+        rename_features: Optional[dict[str, str]] = None,
+        timestamp_lookup_key: Optional[str] = None,
+    ) -> list[Any]:
+        """Create a list of FeatureLookups for the given table."""
+        from databricks.feature_engineering import FeatureLookup
+        
+        return [
+            FeatureLookup(
+                table_name=self.fqn(table_name),
+                lookup_key=lookup_keys,
+                feature_names=feature_names,
+                rename_features=rename_features,
+                timestamp_lookup_key=timestamp_lookup_key,
+            )
+        ]
+
+    def drop_table(self, table_name: str) -> None:
+        """Drop an offline feature table."""
+        if self.dry_run:
+            logger.info("[DRY RUN] Would drop feature table '%s'", self.fqn(table_name))
+            return
+        self.fe.drop_table(name=self.fqn(table_name))
+        logger.info("Dropped feature table '%s'.", self.fqn(table_name))
+
+    def read_table(self, table_name: str) -> "DataFrame":
+        """Read the offline feature table as a Spark DataFrame."""
+        return self.fe.read_table(name=self.fqn(table_name))
+        
+    def set_tags(self, table_name: str, tags: dict[str, str]) -> None:
+        """Set tags on the feature table."""
+        if self.dry_run:
+            logger.info("[DRY RUN] Would set tags %s on '%s'", tags, self.fqn(table_name))
+            return
+        for k, v in tags.items():
+            self.fe.set_feature_table_tag(name=self.fqn(table_name), key=k, value=v)
+        logger.info("Set tags on feature table '%s'.", self.fqn(table_name))
+
+    def update_description(self, table_name: str, description: str) -> None:
+        """Update the description of the feature table."""
+        if self.dry_run:
+            logger.info("[DRY RUN] Would update description on '%s'", self.fqn(table_name))
+            return
+        from mlops_utils.spark_utils import get_or_create_spark
+        spark = get_or_create_spark()
+        safe_desc = description.replace("'", "\\'")
+        spark.sql(f"COMMENT ON TABLE {self.fqn(table_name)} IS '{safe_desc}'")
+        logger.info("Updated description on feature table '%s'.", self.fqn(table_name))
+
+    @with_retry(max_attempts=3, backoff_base=2.0)
+    def sync_online_table(self, table_name: str, primary_keys: list[str]) -> None:
+        """Sync the offline feature table to a Unity Catalog Online Table."""
+        if self.dry_run:
+            logger.info("[DRY RUN] Would create/update online table '%s'", self.fqn(table_name, use_online_schema=True))
+            return
+            
+        from databricks.sdk import WorkspaceClient
+        from databricks.sdk.service.catalog import OnlineTableSpec, OnlineTableSpecContinuousSchedulingPolicy
+        
+        w = WorkspaceClient()
+        online_fqn = self.fqn(table_name, use_online_schema=True)
+        offline_fqn = self.fqn(table_name, use_online_schema=False)
+        
+        try:
+            w.online_tables.get(online_fqn)
+            logger.info("Online table '%s' already exists (sync is continuous).", online_fqn)
+        except Exception:
+            spec = OnlineTableSpec(
+                primary_key_columns=primary_keys,
+                source_table_full_name=offline_fqn,
+                run_continuously=OnlineTableSpecContinuousSchedulingPolicy(),
+            )
+            w.online_tables.create(name=online_fqn, spec=spec)
+            logger.info("Created online table '%s' mirroring '%s'.", online_fqn, offline_fqn)
+
+    def query_endpoint(self, endpoint_name: str, records: list[dict[str, Any]]) -> Any:
+        """Query an online Feature Serving endpoint for real-time inference."""
+        from databricks.sdk import WorkspaceClient
+        w = WorkspaceClient()
+        response = w.serving_endpoints.query(
+            name=endpoint_name,
+            dataframe_records=records,
+        )
+        return response.predictions
 
 
 # ---------------------------------------------------------------------------
@@ -53,9 +253,10 @@ def create_or_replace_feature_table(
     timeseries_columns: Optional[str | list[str]] = None,
     description: str = "",
     tags: Optional[dict[str, str]] = None,
+    raise_on_drop_error: bool = False,
 ) -> Any:
     """Create a Unity Catalog Feature Table (drop first if exists).
-
+    
     Parameters
     ----------
     fe:
@@ -74,6 +275,9 @@ def create_or_replace_feature_table(
         Human-readable description logged to UC.
     tags:
         Optional metadata tags (key-value pairs).
+    raise_on_drop_error:
+        If True, raise exception if dropping the table fails (e.g., due to permissions).
+        Otherwise, swallow the exception (assuming table didn't exist).
 
     Returns
     -------
@@ -83,8 +287,10 @@ def create_or_replace_feature_table(
     try:
         fe.drop_table(name=name)
         logger.info("Dropped existing feature table '%s'.", name)
-    except Exception:  # noqa: BLE001
-        pass  # Table didn't exist – that's fine
+    except Exception as exc:  # noqa: BLE001
+        if raise_on_drop_error:
+            raise
+        logger.debug("Drop failed for feature table '%s' (may not exist): %s", name, exc)
 
     kwargs: dict[str, Any] = dict(
         name=name,
@@ -126,9 +332,24 @@ def write_feature_table(
     df:
         DataFrame of feature values to write.
     mode:
-        Write mode – ``"merge"`` (default, supports schema evolution) or
-        ``"overwrite"``.
+        Write mode.  The Databricks Feature Engineering client only supports
+        ``"merge"`` (upsert by primary key).  ``"overwrite"`` is **not**
+        supported — to reset a feature table, call
+        :func:`create_or_replace_feature_table` first (which drops and
+        recreates the table), then write with ``mode="merge"`` into the
+        now-empty table.
+
+    Raises
+    ------
+    Exception
+        Propagates any error raised by ``fe.write_table``.
     """
+    if mode != "merge":
+        raise ValueError(
+            f"write_feature_table only supports mode='merge'; got mode={mode!r}. "
+            "To reset a feature table, call create_or_replace_feature_table() first "
+            "(drops + recreates the table), then write with mode='merge'."
+        )
     fe.write_table(name=name, df=df, mode=mode)
     logger.info("Wrote features to '%s' (mode=%s).", name, mode)
 
@@ -219,55 +440,20 @@ def score_batch_wrapper(
 # Online store helpers
 # ---------------------------------------------------------------------------
 
-def publish_to_online_store(
-    fe: "FeatureEngineeringClient",
-    feature_table_name: str,
-    online_store_spec: Any,
-    *,
-    mode: str = "merge",
-) -> None:
-    """Publish features from an offline Delta table to an online (key-value) store.
-
-    The ``online_store_spec`` controls which backend to target.  Example for
-    Databricks-managed online store:
-
-    .. code-block:: python
-
-        from databricks.feature_engineering.entities.feature_serving_endpoint import (
-            ServedEntity,
-        )
-        from databricks.feature_store.online_store_spec import AmazonDynamoDBSpec
-
-        spec = AmazonDynamoDBSpec(
-            region="us-east-1",
-            write_secret_prefix="ml/feature-store",
-            read_secret_prefix="ml/feature-store",
-            table_name="churn_features_online",
-        )
-
-    Parameters
-    ----------
-    fe:
-        ``FeatureEngineeringClient`` instance.
-    feature_table_name:
-        Fully-qualified offline feature table name.
-    online_store_spec:
-        Platform-specific online store specification object.
-    mode:
-        Publish mode – ``"merge"`` or ``"overwrite"``.
-    """
-    fe.publish_table(
-        name=feature_table_name,
-        online_store=online_store_spec,
-        mode=mode,
+def publish_online_if_enabled(cfg: Any, fsm: FeatureStoreManager) -> bool:
+    """Publish to online store (UC Online Table) only if cfg.online_store.enabled is True."""
+    if not cfg.online_store.enabled:
+        logger.info("Online store disabled – skipping publish.")
+        return False
+        
+    fsm.sync_online_table(
+        table_name=cfg.feature_table,
+        primary_keys=list(cfg.primary_keys)
     )
-    logger.info(
-        "Published feature table '%s' to online store (mode=%s).",
-        feature_table_name,
-        mode,
-    )
+    return True
 
 
+@with_retry(max_attempts=3, backoff_base=2.0)
 def create_feature_serving_endpoint(
     endpoint_name: str,
     served_entities: list[Any],

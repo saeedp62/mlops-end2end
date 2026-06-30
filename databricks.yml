@@ -21,17 +21,41 @@ bundle:
 variables:
   catalog:
     description: Unity Catalog name.
-    default: main
+    default: lighthouse_bkk6_analytics
 
-  db:
-    description: Schema / database name.
-    default: dbdemos_mlops
+  # ---------------------------------------------------------------------------
+  # Schema variables (business-purpose naming, consistent across environments).
+  # Environment isolation is via catalog/workspace, NOT schema name differences.
+  # ---------------------------------------------------------------------------
+  training_datasets_schema:
+    description: Schema for bronze ingestion + label/split tables.
+    default: training_datasets
+
+  offline_features_schema:
+    description: Schema for historical feature tables (training + batch inference).
+    default: offline_features
+
+  online_features_schema:
+    description: Schema for real-time serving features.
+    default: online_features
+
+  ml_models_schema:
+    description: Schema for registered model assets.
+    default: ml_models
+
+  model_predictions_schema:
+    description: Schema for batch inference outputs and scoring results.
+    default: model_predictions
+
+  ml_monitoring_schema:
+    description: Schema for drift monitoring and operational ML metrics.
+    default: ml_monitoring
 
   # Volume path where config YAMLs and wheel artifacts are stored.
   # The bundle uploads wheels here during deployment.
   artifacts_volume:
     description: UC Volume path for config and wheel uploads.
-    default: /Volumes/main/dbdemos_mlops/bundle
+    default: /Volumes/lighthouse_bkk6_analytics/training_datasets/bundle
 
   # Source of raw customer data (overridden per target)
   source_type:
@@ -76,7 +100,7 @@ include:
 # ---------------------------------------------------------------------------
 targets:
 
-  # ── Dev ──────────────────────────────────────────────────────────────────
+  # -- Dev ------------------------------------------------------------------
   # Used by individual developers for interactive experimentation.
   # Run: databricks bundle deploy --target dev
   dev:
@@ -87,17 +111,17 @@ targets:
       host: ${workspace.host}   # read from ~/.databrickscfg or DATABRICKS_HOST
 
     variables:
-      catalog: main
-      db: dbdemos_mlops_dev
-      artifacts_volume: /Volumes/main/dbdemos_mlops_dev/bundle
+      catalog: lighthouse_bkk6_analytics
+      artifacts_volume: /Volumes/lighthouse_bkk6_analytics/training_datasets/bundle
       source_type: volume_csv
       source_table: ""
+      # Schema names are identical to defaults (no override needed)
 
     run_as:
       # In dev mode each developer runs under their own identity
       user_name: ${workspace.current_user.userName}
 
-  # ── Staging ──────────────────────────────────────────────────────────────
+  # -- Staging --------------------------------------------------------------
   # Deployed automatically on merge to the `develop` branch via GitHub Actions.
   # Run: databricks bundle deploy --target staging
   staging:
@@ -105,17 +129,17 @@ targets:
       host: ${var.DATABRICKS_HOST}
 
     variables:
-      catalog: main
-      db: dbdemos_mlops_staging
-      artifacts_volume: /Volumes/main/dbdemos_mlops_staging/bundle
+      catalog: lighthouse_bkk6_analytics
+      artifacts_volume: /Volumes/lighthouse_bkk6_analytics/training_datasets/bundle
       source_type: unity_catalog_table
       source_table: telco_catalog.customer360.base_customers
       node_type: Standard_DS3_v2
+      # Schema names are identical to defaults (no override needed)
 
     run_as:
       service_principal_name: ${var.PIPELINE_SP_CLIENT_ID}
 
-  # ── Prod ─────────────────────────────────────────────────────────────────
+  # -- Prod -----------------------------------------------------------------
   # Deployed on merge to `main` via GitHub Actions (requires manual approval gate).
   # Run: databricks bundle deploy --target prod
   prod:
@@ -123,12 +147,12 @@ targets:
       host: ${var.DATABRICKS_HOST_PROD}
 
     variables:
-      catalog: main
-      db: dbdemos_mlops
-      artifacts_volume: /Volumes/main/dbdemos_mlops/bundle
+      catalog: lighthouse_bkk6_analytics
+      artifacts_volume: /Volumes/lighthouse_bkk6_analytics/training_datasets/bundle
       source_type: unity_catalog_table
       source_table: telco_catalog.customer360.base_customers
       node_type: Standard_DS3_v2
+      # Schema names are identical to defaults (no override needed)
 
     run_as:
       service_principal_name: ${var.PIPELINE_SP_CLIENT_ID_PROD}

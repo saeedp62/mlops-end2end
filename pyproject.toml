@@ -58,3 +58,6 @@ addopts = "-v --tb=short --cov=src/churn --cov-report=term-missing"
 markers = [
     "integration: marks tests that require a live Databricks cluster (deselect with '-m not integration')",
 ]
+
+[tool.uv.sources]
+mlops-utils = { path = "packages/mlops_utils" }

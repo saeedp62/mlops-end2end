@@ -44,10 +44,22 @@ resources:
 
       tasks:
 
-        # ── Task 0: Install wheels ──────────────────────────────────────────
-        # Uploads are done by `bundle deploy`; this task just validates the
-        # wheels are present before running pipeline code.
+        # -- Task 0: Bootstrap schemas ----------------------------------------
+        # Idempotently creates all 6 MLOps schemas in Unity Catalog before any
+        # DLT pipeline runs. Fixes [SCHEMA_NOT_FOUND] on first deployment.
+        - task_key: bootstrap_schemas
+          job_cluster_key: churn_cluster
+          spark_python_task:
+            python_file: /Workspace/${workspace.root_path}/files/scripts/run_schema_bootstrap.py
+            parameters:
+              - "--config-path"
+              - "${var.artifacts_volume}/configs/${bundle.target}.yaml"
+
+        # -- Task 1: Install wheels check -------------------------------------
+        # Validates the wheels are present before running pipeline code.
         - task_key: install_check
+          depends_on:
+            - task_key: bootstrap_schemas
           job_cluster_key: churn_cluster
           python_wheel_task:
             package_name: mlops_utils
@@ -56,7 +68,7 @@ resources:
             - whl: ${var.artifacts_volume}/wheels/mlops_utils-*.whl
             - whl: ${var.artifacts_volume}/wheels/mlops_churn-*.whl
 
-        # ── Task 1: Run DLT Bronze Ingestion pipeline ────────────────────────
+        # -- Task 2: Run DLT Bronze Ingestion pipeline -------------------------
         - task_key: bronze_ingestion
           depends_on:
             - task_key: install_check
@@ -64,7 +76,7 @@ resources:
             pipeline_id: ${resources.pipelines.churn_bronze_ingestion.id}
             full_refresh: false
 
-        # ── Task 2: Run DLT Feature Engineering pipeline ─────────────────────
+        # -- Task 3: Run DLT Feature Engineering pipeline ----------------------
         - task_key: feature_engineering
           depends_on:
             - task_key: bronze_ingestion
@@ -104,7 +116,19 @@ resources:
           - ${var.pipeline_sp}
 
       tasks:
+        # Bootstrap schemas first, then run the feature pipeline
+        - task_key: bootstrap_schemas
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.churn_bronze_ingestion.id}   # reuse cluster
+          spark_python_task:
+            python_file: /Workspace/${workspace.root_path}/files/scripts/run_schema_bootstrap.py
+            parameters:
+              - "--config-path"
+              - "${var.artifacts_volume}/configs/${bundle.target}.yaml"
+
         - task_key: feature_engineering
+          depends_on:
+            - task_key: bootstrap_schemas
           pipeline_task:
             pipeline_id: ${resources.pipelines.churn_feature_engineering.id}
             full_refresh: false

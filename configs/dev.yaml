@@ -3,9 +3,24 @@
 # Development / local demo environment configuration
 #
 # Data source: Volume CSV (file uploaded to a UC Volume for demo purposes)
+#
+# Schema layout (lighthouse_bkk6_analytics catalog):
+#   training_datasets  – bronze ingestion + label/split tables
+#   offline_features   – historical feature tables for training & batch inference
+#   online_features    – real-time serving features
+#   ml_models          – registered model assets
+#   model_predictions  – batch inference / scoring outputs
+#   ml_monitoring      – drift, performance, and operational metrics
 # =============================================================================
-catalog: main
-db: dbdemos_mlops_dev
+catalog: lighthouse_bkk6_analytics
+
+schemas:
+  training_datasets: training_datasets   # bronze + label tables
+  offline_features:  offline_features    # feature table
+  online_features:   online_features     # online serving
+  ml_models:         ml_models           # registered models
+  model_predictions: model_predictions   # batch inference outputs
+  ml_monitoring:     ml_monitoring       # monitoring metrics
 
 # Table names (without catalog/schema prefix)
 bronze_table: advanced_churn_bronze_customers
@@ -28,19 +43,19 @@ train_ratio: 0.8
 rng_seed: 2025
 
 # MLflow experiment
-experiment_path: /Users/dev_user/dbdemos_mlops
-experiment_name: dbdemos_advanced_mlops_churn_dev_experiment
+experiment_path: /Users/dev_user/lighthouse_bkk6_analytics
+experiment_name: advanced_mlops_churn_dev_experiment
 
 # ---------------------------------------------------------------------------
 # Data source: Volume CSV
 # Upload the IBM Telco CSV to the Volume shown below, then configure this path.
 # CLI upload example:
 #   databricks fs cp Telco-Customer-Churn.csv \
-#     dbfs:/Volumes/main/shared_data/telco/Telco-Customer-Churn.csv
+#     dbfs:/Volumes/lighthouse_bkk6_analytics/training_datasets/telco/Telco-Customer-Churn.csv
 # ---------------------------------------------------------------------------
 data_source:
   type: volume_csv
-  volume_path: /Volumes/main/shared_data/telco/Telco-Customer-Churn.csv
+  volume_path: /Volumes/lighthouse_bkk6_analytics/training_datasets/telco/Telco-Customer-Churn.csv
   csv_options:
     header: "true"
     inferSchema: "true"

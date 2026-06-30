@@ -83,13 +83,18 @@ def run_feature_engineering_pipeline(
         split_label_from_features,
     )
     from mlops_utils.data_io import write_delta, add_primary_key_constraint
-    from mlops_utils.feature_store import (
-        create_or_replace_feature_table,
-        write_feature_table,
-        publish_to_online_store,
-    )
+    from mlops_utils.feature_store import FeatureStoreManager
 
-    fe = fe_client or FeatureEngineeringClient()
+    if fe_client:
+        fsm = FeatureStoreManager(
+            fe=fe_client,
+            catalog=config.catalog,
+            offline_schema=config.schemas.offline_features,
+            online_schema=config.schemas.online_features,
+        )
+    else:
+        fsm = FeatureStoreManager.from_config(config)
+
     do_online = config.online_store.enabled if publish_online is None else publish_online
 
     # ------------------------------------------------------------------
@@ -153,13 +158,13 @@ def run_feature_engineering_pipeline(
     )
 
     # ------------------------------------------------------------------
-    # Stage 6: Create / replace UC feature table
+    # Stage 6 & 7: Create / replace UC feature table and write features
     # ------------------------------------------------------------------
-    logger.info("[6/7] Creating feature table '%s'…", config.full_feature_table)
+    logger.info("[6/7] Writing features to '%s'...", config.full_feature_table)
     if reset_feature_table:
-        create_or_replace_feature_table(
-            fe=fe,
-            name=config.full_feature_table,
+        # Drops and recreates the table, then writes in merge mode
+        fsm.reset_and_write(
+            table_name=config.feature_table,
             df=feature_df,
             primary_keys=list(config.primary_keys),
             timeseries_columns=config.timeseries_col,
@@ -168,23 +173,18 @@ def run_feature_engineering_pipeline(
                 "Includes service counts and cleaned charge columns."
             ),
         )
-
-    # ------------------------------------------------------------------
-    # Stage 7: Write features
-    # ------------------------------------------------------------------
-    logger.info("[7/7] Writing features to '%s'…", config.full_feature_table)
-    write_feature_table(
-        fe=fe,
-        name=config.full_feature_table,
-        df=feature_df,
-        mode="merge" if not reset_feature_table else "overwrite",
-    )
+    else:
+        fsm.write(
+            table_name=config.feature_table,
+            df=feature_df,
+            mode="merge",
+        )
 
     # ------------------------------------------------------------------
     # Optional: Publish to online store
     # ------------------------------------------------------------------
     if do_online:
-        _publish_online(config, fe)
+        _publish_online(config, fsm)
 
     logger.info("Feature engineering pipeline completed successfully.")
 
@@ -193,23 +193,15 @@ def run_feature_engineering_pipeline(
 # Online store publish helper
 # ---------------------------------------------------------------------------
 
-def _publish_online(config: ChurnConfig, fe: object) -> None:
-    """Publish the offline feature table to the configured online store."""
-    from mlops_utils.feature_store import (
-        publish_to_online_store,
-        create_feature_serving_endpoint,
-    )
+def _publish_online(config: ChurnConfig, fsm: "FeatureStoreManager") -> None:
+    """Publish the offline feature table to a UC Online Table and create an endpoint."""
+    from mlops_utils.feature_store import create_feature_serving_endpoint
 
-    backend = config.online_store.backend.lower()
-    logger.info("Publishing features to online store (backend=%s)…", backend)
+    logger.info("Publishing features to UC Online Table...")
 
-    online_store_spec = _build_online_store_spec(config)
-
-    publish_to_online_store(
-        fe=fe,
-        feature_table_name=config.full_feature_table,
-        online_store_spec=online_store_spec,
-        mode="merge",
+    fsm.sync_online_table(
+        table_name=config.feature_table,
+        primary_keys=list(config.primary_keys)
     )
 
     # Optionally create a Feature Serving endpoint
@@ -233,39 +225,3 @@ def _publish_online(config: ChurnConfig, fe: object) -> None:
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not create serving endpoint '%s': %s", endpoint_name, exc)
-
-
-def _build_online_store_spec(config: ChurnConfig) -> object:
-    """Build the backend-specific online store spec object."""
-    backend = config.online_store.backend.lower()
-    extra = config.online_store.extra
-
-    if backend == "databricks":
-        # Databricks-managed online store (no external config needed)
-        try:
-            from databricks.feature_store.online_store_spec import (  # type: ignore[import]
-                AzureCosmosDBSpec,
-            )
-
-            return AzureCosmosDBSpec(**extra) if extra else None
-        except ImportError:
-            return None  # Will use the FE client's default
-
-    if backend == "dynamodb":
-        from databricks.feature_store.online_store_spec import (  # type: ignore[import]
-            AmazonDynamoDBSpec,
-        )
-
-        return AmazonDynamoDBSpec(**extra)
-
-    if backend in {"cosmosdb", "cosmos"}:
-        from databricks.feature_store.online_store_spec import (  # type: ignore[import]
-            AzureCosmosDBSpec,
-        )
-
-        return AzureCosmosDBSpec(**extra)
-
-    raise ValueError(
-        f"Unknown online_store.backend='{backend}'. "
-        "Choose from: databricks, dynamodb, cosmosdb."
-    )

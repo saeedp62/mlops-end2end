@@ -99,8 +99,8 @@ class TestModuleConstants:
         expected = f"{fe_module.cfg.bronze_table}_validated"
         assert fe_module._BRONZE_VALIDATED == expected
 
-    def test_default_catalog_is_main(self, fe_module):
-        assert fe_module.cfg.catalog == "main"
+    def test_default_catalog(self, fe_module):
+        assert fe_module.cfg.catalog == "lighthouse_bkk6_analytics"
 
     def test_feature_table_name_accessible(self, fe_module):
         assert fe_module.cfg.feature_table == "advanced_churn_feature_table"
@@ -422,12 +422,6 @@ class TestDltDecoratorWiring:
 
     def test_feature_table_name_in_dlt_table_calls(self, fe_module, dlt_mock):
         """@dlt.table must be called with the feature table name."""
-        table_names = [
-            kw.get("name")
-            for _, kw in [c.args, c.kwargs]
-            if isinstance(kw, dict)
-            for c in dlt_mock.table.call_args_list
-        ]
         # Just verify dlt.table was called with keyword args that contain names
         all_kwargs = [c.kwargs for c in dlt_mock.table.call_args_list]
         names_used = [kw.get("name", "") for kw in all_kwargs]

@@ -108,16 +108,26 @@ class TestGetConfig:
         """Empty spark conf → ChurnConfig() defaults used."""
         mod = _load_ingestion_module(spark_conf_mock, dlt_mock, config_path="")
 
-        # The module-level cfg should be a ChurnConfig with default values
-        assert mod.cfg.catalog == "main"
-        assert mod.cfg.db == "dbdemos_mlops"
+        # The module-level cfg should be a ChurnConfig with default values.
+        # The new multi-schema layout: no .db attribute; check catalog + schemas.
+        assert mod.cfg.catalog == "lighthouse_bkk6_analytics"
+        assert mod.cfg.schemas.training_datasets == "training_datasets"
 
     def test_uses_config_path_from_spark_conf(
         self, spark_conf_mock, dlt_mock, tmp_path
     ):
         """When config_path is set in spark conf, that YAML is loaded."""
         cfg_file = tmp_path / "test.yaml"
-        cfg_file.write_text("catalog: ci_catalog\ndb: ci_db\n")
+        cfg_file.write_text(
+            "catalog: ci_catalog\n"
+            "schemas:\n"
+            "  training_datasets: ci_training\n"
+            "  offline_features:  ci_offline\n"
+            "  online_features:   online_features\n"
+            "  ml_models:         ml_models\n"
+            "  model_predictions: model_predictions\n"
+            "  ml_monitoring:     ml_monitoring\n"
+        )
 
         # Only the first conf.get call matters here
         spark_conf_mock.conf.get.return_value = str(cfg_file)
@@ -126,7 +136,7 @@ class TestGetConfig:
             spark_conf_mock, dlt_mock, config_path=str(cfg_file)
         )
         assert mod.cfg.catalog == "ci_catalog"
-        assert mod.cfg.db == "ci_db"
+        assert mod.cfg.schemas.training_datasets == "ci_training"
 
     def test_falls_back_gracefully_when_spark_raises(self, dlt_mock):
         """NameError on spark (DLT global unavailable) → still returns defaults."""
@@ -135,7 +145,7 @@ class TestGetConfig:
         bad_spark.conf.get.side_effect = Exception("spark not available")
 
         mod = _load_ingestion_module(bad_spark, dlt_mock, config_path="")
-        assert mod.cfg.catalog == "main"  # defaults intact
+        assert mod.cfg.catalog == "lighthouse_bkk6_analytics"  # defaults intact
 
 
 # ---------------------------------------------------------------------------
@@ -148,10 +158,17 @@ class TestSourceDescription:
     ) -> object:
         cfg_file = tmp_path / "cfg.yaml"
         cfg_file.write_text(
-            f"catalog: main\ndb: ml\n"
+            "catalog: lighthouse_bkk6_analytics\n"
+            "schemas:\n"
+            "  training_datasets: training_datasets\n"
+            "  offline_features:  offline_features\n"
+            "  online_features:   online_features\n"
+            "  ml_models:         ml_models\n"
+            "  model_predictions: model_predictions\n"
+            "  ml_monitoring:     ml_monitoring\n"
             f"data_source:\n  type: {source_type}\n"
             f"  source_table: lob.sch.tbl\n"
-            f"  volume_path: /Volumes/main/data/file.csv\n"
+            f"  volume_path: /Volumes/lighthouse_bkk6_analytics/training_datasets/telco/Telco-Customer-Churn.csv\n"
         )
         spark_conf_mock.conf.get.return_value = str(cfg_file)
         return _load_ingestion_module(
@@ -171,7 +188,7 @@ class TestSourceDescription:
         mod = self._load_with_source_type(
             "volume_csv", spark_conf_mock, dlt_mock, tmp_path
         )
-        assert "/Volumes/main/data/file.csv" in mod._SOURCE_DESCRIPTION
+        assert mod.cfg.data_source.volume_path in mod._SOURCE_DESCRIPTION
 
     def test_http_csv_description(self, spark_conf_mock, dlt_mock, tmp_path):
         mod = self._load_with_source_type(

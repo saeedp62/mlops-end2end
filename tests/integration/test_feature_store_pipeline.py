@@ -5,7 +5,9 @@ Integration tests for ``churn.feature_store_pipeline``.
 
 These tests require a **live Databricks cluster** with:
 - Unity Catalog enabled
-- A ``main.dbdemos_mlops_ci`` schema (created automatically if missing)
+- ``lighthouse_bkk6_analytics.training_datasets_ci`` and
+  ``lighthouse_bkk6_analytics.offline_features_ci`` schemas
+  (created automatically if missing)
 - The ``databricks-feature-engineering`` package installed
 
 Run locally with Databricks Connect or on a CI Databricks cluster.
@@ -14,8 +16,7 @@ Skip in pure unit test runs with: ``pytest -m "not integration"``
 Set the following environment variables for CI:
     DATABRICKS_HOST      = https://your-workspace.azuredatabricks.net
     DATABRICKS_TOKEN     = dapi...
-    MLOPS_CATALOG        = main
-    MLOPS_DB             = dbdemos_mlops_ci
+    MLOPS_CATALOG        = lighthouse_bkk6_analytics
 """
 
 from __future__ import annotations
@@ -37,12 +38,28 @@ def ci_spark():
 
 @pytest.fixture(scope="module")
 def ci_config(tmp_path_factory):
-    """ChurnConfig pointing to an isolated CI schema."""
+    """ChurnConfig pointing to isolated CI schemas inside lighthouse_bkk6_analytics.
+
+    Schemas used:
+      training_datasets_ci  – bronze + label tables for CI run
+      offline_features_ci   – feature table for CI run
+
+    All other schemas (online_features, ml_models, etc.) use the shared
+    schema names – CI tests do not write to those.
+    """
     from churn.config import ChurnConfig
+    from churn.config import SchemaConfig
 
     return ChurnConfig(
-        catalog="main",
-        db="dbdemos_mlops_ci",
+        catalog="lighthouse_bkk6_analytics",
+        schemas=SchemaConfig(
+            training_datasets="training_datasets_ci",
+            offline_features="offline_features_ci",
+            online_features="online_features",
+            ml_models="ml_models",
+            model_predictions="model_predictions",
+            ml_monitoring="ml_monitoring",
+        ),
         bronze_table="ci_churn_bronze_customers",
         feature_table="ci_churn_feature_table",
         label_table="ci_churn_label_table",
@@ -52,16 +69,21 @@ def ci_config(tmp_path_factory):
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_ci_schema(ci_spark, ci_config):
-    """Create the CI schema (and clean up after all tests in this module)."""
-    from mlops_utils.catalog import setup_catalog_and_schema, drop_and_recreate_schema
+    """Create all CI schemas (and clean up after all tests in this module)."""
+    from mlops_utils.catalog import ensure_mlops_schemas, drop_and_recreate_schema
 
-    # Set up
-    setup_catalog_and_schema(ci_spark, ci_config.catalog, ci_config.db)
+    # Set up – create the two CI-isolated schemas
+    ci_schemas = {
+        ci_config.schemas.training_datasets: "CI bronze + label tables.",
+        ci_config.schemas.offline_features:  "CI feature tables.",
+    }
+    ensure_mlops_schemas(ci_spark, ci_config.catalog, ci_schemas)
 
     yield
 
-    # Tear down – drop the CI schema after integration tests
-    drop_and_recreate_schema(ci_spark, ci_config.catalog, ci_config.db)
+    # Tear down – drop the CI schemas after integration tests
+    for schema in [ci_config.schemas.training_datasets, ci_config.schemas.offline_features]:
+        drop_and_recreate_schema(ci_spark, ci_config.catalog, schema)
 
 
 @pytest.fixture(scope="module")

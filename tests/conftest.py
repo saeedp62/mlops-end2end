@@ -126,11 +126,18 @@ def mock_mlflow_client(mocker):
 @pytest.fixture
 def churn_config():
     """Default ChurnConfig for tests (no file I/O required)."""
-    from churn.config import ChurnConfig
+    from churn.config import ChurnConfig, SchemaConfig
 
     return ChurnConfig(
         catalog="test_catalog",
-        db="test_db",
+        schemas=SchemaConfig(
+            training_datasets="test_training_datasets",
+            offline_features="test_offline_features",
+            online_features="test_online_features",
+            ml_models="test_ml_models",
+            model_predictions="test_model_predictions",
+            ml_monitoring="test_ml_monitoring",
+        ),
         bronze_table="test_bronze",
         feature_table="test_features",
         label_table="test_labels",

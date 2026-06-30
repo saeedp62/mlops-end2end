@@ -17,7 +17,7 @@ Usage
 
     # Access values
     catalog = cfg["catalog"]
-    db      = cfg["db"]
+    schemas = cfg["schemas"]
 
 Environment overrides
 ~~~~~~~~~~~~~~~~~~~~~
