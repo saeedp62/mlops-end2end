@@ -29,7 +29,7 @@ Public API
 
 from __future__ import annotations
 
-import logging
+from mlops_utils.logger import get_logger
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from databricks.feature_engineering import FeatureEngineeringClient
     from pyspark.sql import DataFrame
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

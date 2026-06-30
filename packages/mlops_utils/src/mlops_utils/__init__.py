@@ -12,6 +12,8 @@ from mlops_utils.catalog import setup_catalog_and_schema, drop_and_recreate_sche
 from mlops_utils.config_loader import load_config, merge_configs
 from mlops_utils.feature_store import FeatureStoreManager
 from mlops_utils.validation import ModelValidator, CheckResult
+from mlops_utils.data_validation import DataValidator, DataCheckResult
+from mlops_utils.logger import get_logger
 
 __all__ = [
     "get_or_create_spark",
@@ -28,4 +30,7 @@ __all__ = [
     "FeatureStoreManager",
     "ModelValidator",
     "CheckResult",
+    "DataValidator",
+    "DataCheckResult",
+    "get_logger",
 ]

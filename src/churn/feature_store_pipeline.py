@@ -33,7 +33,7 @@ Usage::
 
 from __future__ import annotations
 
-import logging
+from mlops_utils.logger import get_logger
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 from churn.config import ChurnConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def run_feature_engineering_pipeline(
@@ -123,6 +123,23 @@ def run_feature_engineering_pipeline(
     # ------------------------------------------------------------------
     logger.info("[3/7] Computing features…")
     feature_and_label_df = build_feature_df(bronze_df)
+
+    # ------------------------------------------------------------------
+    # Stage 3.5: Data Quality Validation
+    # ------------------------------------------------------------------
+    logger.info("[3.5/7] Running data quality validations…")
+    from mlops_utils.data_validation import DataValidator
+    
+    validator = DataValidator(feature_and_label_df)
+    for pk in config.primary_keys:
+        validator.add_check(DataValidator.check_no_nulls(pk))
+        validator.add_check(DataValidator.check_unique(pk))
+    
+    validator.add_check(DataValidator.check_allowed_values(config.label_col, [0, 1]))
+    validator.add_check(DataValidator.check_custom_sql("total_charges_non_negative", "total_charges >= 0"))
+    
+    # Run validations and fail the pipeline if they don't pass
+    validator.run(raise_on_fail=True)
 
     # ------------------------------------------------------------------
     # Stage 4: Split labels from features

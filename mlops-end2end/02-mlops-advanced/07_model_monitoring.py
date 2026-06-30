@@ -107,6 +107,8 @@
 # COMMAND ----------
 
 # DBTITLE 1,Define expected loss metric
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 from pyspark.sql.types import DoubleType, StructField
 from databricks.sdk.service.catalog import MonitorMetric, MonitorMetricType
 
@@ -139,7 +141,7 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.catalog import MonitorInferenceLog, MonitorInferenceLogProblemType, MonitorCronSchedule
 
 
-print(f"Creating monitor for inference table {catalog}.{db}.advanced_churn_inference_table")
+logger.info(f"Creating monitor for inference table {catalog}.{db}.advanced_churn_inference_table")
 w = WorkspaceClient()
 
 try:
@@ -165,7 +167,7 @@ try:
   
 except Exception as lhm_exception:
   if "already exist" in str(lhm_exception).lower():
-    print(f"Monitor for {catalog}.{db}.advanced_churn_inference_table already exists, retrieving monitor info:")
+    logger.info(f"Monitor for {catalog}.{db}.advanced_churn_inference_table already exists, retrieving monitor info:")
     info = w.quality_monitors.get(table_name=f"{catalog}.{db}.advanced_churn_inference_table")
   else:
     raise lhm_exception
@@ -209,7 +211,7 @@ if len(refreshes) == 0:
 run_info = refreshes[0]
 while run_info.state in (MonitorRefreshInfoState.PENDING, MonitorRefreshInfoState.RUNNING):
   run_info = w.quality_monitors.get_refresh(table_name=f"{catalog}.{db}.advanced_churn_inference_table", refresh_id=run_info.refresh_id)
-  print(f"waiting for refresh to complete {run_info.state}...")
+  logger.info(f"waiting for refresh to complete {run_info.state}...")
   time.sleep(180)
 
 assert run_info.state == MonitorRefreshInfoState.SUCCESS, "Monitor refresh failed"

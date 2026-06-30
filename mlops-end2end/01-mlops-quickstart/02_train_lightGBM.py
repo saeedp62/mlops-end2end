@@ -36,6 +36,8 @@
 # COMMAND ----------
 
 # DBTITLE 1,Set MLflow experiment
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 import mlflow
 
 xp_name = "dbdemos_mlops_churn_demo_quickstart"
@@ -47,10 +49,10 @@ try:
   experiment_id = mlflow.get_experiment_by_name(experiment_name).experiment_id
 
 except Exception as e:
-  print(f"Creating experiment: {experiment_name}")
+  logger.info(f"Creating experiment: {experiment_name}")
   experiment_id = mlflow.create_experiment(name=experiment_name, tags={"dbdemos":"quickstart"})
 
-print(f"Experiment ID: {experiment_id}")
+logger.info(f"Experiment ID: {experiment_id}")
 
 # COMMAND ----------
 
@@ -325,7 +327,7 @@ training_results = train_fn(params)
 
 loss = training_results["loss"]
 model = training_results["model"]
-print(f"Model loss: {loss}")
+logger.info(f"Model loss: {loss}")
 
 # COMMAND ----------
 

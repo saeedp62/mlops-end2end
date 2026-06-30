@@ -35,7 +35,7 @@ Public API
 
 from __future__ import annotations
 
-import logging
+from mlops_utils.logger import get_logger
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
     from churn.config import ChurnConfig, DataSourceConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Fallback HTTP URL (S3 mirror – avoids GitHub rate limits on CI runners)
 _DEFAULT_HTTP_URL = (

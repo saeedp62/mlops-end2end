@@ -67,6 +67,8 @@ dbutils.widgets.text("model_version", "1", "Model Version") # Will be populated 
 
 # COMMAND ----------
 
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 import mlflow
 from mlflow.tracking.client import MlflowClient
 
@@ -82,7 +84,7 @@ model_details = client.get_model_version(model_name, model_version)
 
 run_info = client.get_run(run_id=model_details.run_id)
 
-print(f"Validating {model_alias} model for {model_name} on model version {model_version}")
+logger.info(f"Validating {model_alias} model for {model_name} on model version {model_version}")
 
 # COMMAND ----------
 
@@ -101,16 +103,16 @@ print(f"Validating {model_alias} model for {model_name} on model version {model_
 # If there's no description or an insufficient number of characters, tag accordingly
 if not model_details.description:
   has_description = False
-  print("Please add model description")
+  logger.info("Please add model description")
 
 elif not len(model_details.description) > 20:
   has_description = False
-  print("Please add detailed model description (40 char min).")
+  logger.info("Please add detailed model description (40 char min).")
   
 else:
   has_description = True
 
-print(f'Model {model_name} version {model_details.version} has description: {has_description}')
+logger.info(f'Model {model_name} version {model_details.version} has description: {has_description}')
 client.set_model_version_tag(name=model_name, version=str(model_details.version), key="has_description", value=has_description)
 
 # COMMAND ----------
@@ -152,9 +154,9 @@ try:
   predicts_check = True
 
 except Exception as e:
-  print(e)
+  logger.info(e)
   features_w_preds = spark.createDataFrame([], StructType([]))
-  print("Unable to predict on features.")
+  logger.info("Unable to predict on features.")
   predicts_check = False
 
   pass
@@ -183,12 +185,12 @@ local_path = mlflow.artifacts.download_artifacts(run_id=run_info.info.run_id, ds
 # Tag model version as possessing artifacts or not
 if not os.listdir(local_path):
   has_artifacts = False
-  print("There are no artifacts associated with this model.  Please include some data/metrics visualization or data profiling.  MLflow supports HTML, .png, and more.")
+  logger.info("There are no artifacts associated with this model.  Please include some data/metrics visualization or data profiling.  MLflow supports HTML, .png, and more.")
 
 else:
   has_artifacts = True
-  print("Artifacts downloaded in: {}".format(local_path))
-  print("Artifacts: {}".format(os.listdir(local_path)))
+  logger.info("Artifacts downloaded in: {}".format(local_path))
+  logger.info("Artifacts: {}".format(os.listdir(local_path)))
 
 client.set_model_version_tag(name=model_name, version=model_version, key="has_artifacts", value=has_artifacts)
 
@@ -212,14 +214,14 @@ try:
     # Compare the challenger f1 score to the existing champion if it exists
     champion_model = client.get_model_version_by_alias(model_name, "Champion")
     champion_f1 = mlflow.get_run(champion_model.run_id).data.metrics['test_f1_score']
-    print(f'Champion f1 score: {champion_f1}. Challenger f1 score: {f1_score}.')
+    logger.info(f'Champion f1 score: {champion_f1}. Challenger f1 score: {f1_score}.')
     metric_f1_passed = f1_score >= champion_f1
 
 except:
-    print(f"No Champion found. Accept the model as it's the first one.")
+    logger.info(f"No Champion found. Accept the model as it's the first one.")
     metric_f1_passed = True
 
-print(f'Model {model_name} version {model_details.version} metric_f1_passed: {metric_f1_passed}')
+logger.info(f'Model {model_name} version {model_details.version} metric_f1_passed: {metric_f1_passed}')
 
 # Tag that F1 metric check has passed
 client.set_model_version_tag(name=model_name, version=model_details.version, key="metric_f1_passed", value=metric_f1_passed)
@@ -282,8 +284,8 @@ try:
     business_metric_passed = challenger_potential_revenue_gain >= champion_potential_revenue_gain
 
 except:
-    print("No Champion found. Skipping business metrics evaluation.")
-    print("You can return to re-run this cell after promoting the Challenger model as Champion in the rest of this notebook.")
+    logger.info("No Champion found. Skipping business metrics evaluation.")
+    logger.info("You can return to re-run this cell after promoting the Challenger model as Champion in the rest of this notebook.")
 
     data = {'Model Alias': ['Challenger', 'Champion'],
             'Potential Revenue Gain': [0, 0]}
@@ -320,7 +322,7 @@ results.tags
 # COMMAND ----------
 
 if metric_f1_passed and has_artifacts and has_description and predicts_check and business_metric_passed:
-  print(f"Registering model {model_name} Version {model_version} as Champion!")
+  logger.info(f"Registering model {model_name} Version {model_version} as Champion!")
   client.set_registered_model_alias(
     name=model_name,
     alias="Champion",

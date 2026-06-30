@@ -21,7 +21,7 @@ Public API
 
 from __future__ import annotations
 
-import logging
+from mlops_utils.logger import get_logger
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from mlflow.entities import Run
     import pandas as pd
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

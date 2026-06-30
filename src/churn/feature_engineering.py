@@ -24,14 +24,14 @@ Public API
 
 from __future__ import annotations
 
-import logging
+from mlops_utils.logger import get_logger
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame as SparkDataFrame
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Optional services checked when computing num_optional_services
 _OPTIONAL_SERVICE_COLS = [

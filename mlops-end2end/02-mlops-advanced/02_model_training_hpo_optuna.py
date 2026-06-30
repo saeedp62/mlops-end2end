@@ -74,6 +74,8 @@ display(spark.table("advanced_churn_feature_table"))
 # COMMAND ----------
 
 # DBTITLE 1,Define feature lookups
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 from databricks.feature_store import FeatureFunction, FeatureLookup
 
 
@@ -418,12 +420,12 @@ study_debug.optimize(objective_fn, n_trials=4, n_jobs=-1)
 
 # COMMAND ----------
 
-print("Best trial:")
+logger.info("Best trial:")
 best_trial = study_debug.best_trial
-print(f"  F1_score: {best_trial.value}")
-print("  Params: ")
+logger.info(f"  F1_score: {best_trial.value}")
+logger.info("  Params: ")
 for key, value in best_trial.params.items():
-    print(f"    {key}: {value}")
+    logger.info(f"    {key}: {value}")
 
 # COMMAND ----------
 
@@ -440,11 +442,11 @@ experiment_name = f"{xp_path}/{xp_name}" # Point to given experiment (Staging/Pr
 # experiment_name = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get() # Point to local/notebook experiment (Dev)
 
 try:
-  print(f"Loading experiment: {experiment_name}")
+  logger.info(f"Loading experiment: {experiment_name}")
   experiment_id = mlflow.get_experiment_by_name(experiment_name).experiment_id
 
 except Exception as e:
-  print(f"Creating experiment: {experiment_name}")
+  logger.info(f"Creating experiment: {experiment_name}")
   experiment_id = mlflow.create_experiment(name=experiment_name, tags={"dbdemos":"advanced"})
 
 # COMMAND ----------
@@ -455,7 +457,7 @@ from mlflow.pyspark.optuna.study import MlflowSparkStudy
 
 
 mlflow.set_experiment(f"{xp_path}/{xp_name}")
-print(f"Set experiment to: {xp_name}")
+logger.info(f"Set experiment to: {xp_name}")
 
 mlflow_storage = MlflowStorage(experiment_id=experiment_id)
 

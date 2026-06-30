@@ -22,12 +22,12 @@ Public API
 
 from __future__ import annotations
 
-import logging
+from mlops_utils.logger import get_logger
 from typing import Optional
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

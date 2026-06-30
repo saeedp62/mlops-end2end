@@ -55,6 +55,8 @@
 
 # COMMAND ----------
 
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 import os
 
 
@@ -137,23 +139,23 @@ for created_job in existing_jobs:
 
 if job_id:
   # Update existing job
-  print("Updating existing...")
+  logger.info("Updating existing...")
   w.jobs.update(job_id=job_id, new_settings=job_settings)
 
 else:
   # Create new job
-  print("Creating new...")
+  logger.info("Creating new...")
   created_job = w.jobs.create(**job_settings.__dict__)
   job_id = created_job.job_id
 
-print(f"Job ID: {job_id}")
+logger.info(f"Job ID: {job_id}")
 
 # COMMAND ----------
 
 # DBTITLE 1,ONE-TIME Operation
-print("Use the job name " + job_name + " to connect the deployment job to the UC model " + model_name + " as indicated in the UC Model UI.")
-print("\nFor your reference, the job ID is: " + str(job_id))
-print("\nDocumentation: \nAWS: https://docs.databricks.com/aws/mlflow/deployment-job#connect \nAzure: https://learn.microsoft.com/azure/databricks/mlflow/deployment-job#connect \nGCP: https://docs.databricks.com/gcp/mlflow/deployment-job#connect")
+logger.info("Use the job name " + job_name + " to connect the deployment job to the UC model " + model_name + " as indicated in the UC Model UI.")
+logger.info("\nFor your reference, the job ID is: " + str(job_id))
+logger.info("\nDocumentation: \nAWS: https://docs.databricks.com/aws/mlflow/deployment-job#connect \nAzure: https://learn.microsoft.com/azure/databricks/mlflow/deployment-job#connect \nGCP: https://docs.databricks.com/gcp/mlflow/deployment-job#connect")
 
 # COMMAND ----------
 
@@ -175,21 +177,21 @@ try:
   if model_info:
     # Model exists - Link job
     if model_info.deployment_job_id == job_id:
-      print("Model exists with existing job - Pass")
+      logger.info("Model exists with existing job - Pass")
       pass
 
     else:
-      print("Model exists - Updating job")
+      logger.info("Model exists - Updating job")
       client.update_registered_model(model_name, deployment_job_id="") # Unlink current job
       client.update_registered_model(model_name, deployment_job_id=job_id) # Link new one
 
 except mlflow.exceptions.RestException as e:
   if "PERMISSION_DENIED" in str(e):
-        print(f"Permission denied on model `{model_name}` - Deployment Job NOT UPDATED.")
+        logger.info(f"Permission denied on model `{model_name}` - Deployment Job NOT UPDATED.")
         # Optionally, handle or re-raise
         pass
 
   else:
     # Create Empty Model placeholder and Link job
-    print("Model does not exist - Creating model and linking job")
+    logger.info("Model does not exist - Creating model and linking job")
     client.create_registered_model(model_name, deployment_job_id=job_id)

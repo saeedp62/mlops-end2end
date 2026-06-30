@@ -39,6 +39,8 @@ dbutils.widgets.text("approval_tag_name", "Approval_Check", "Approval Tag to che
 
 # COMMAND ----------
 
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 import mlflow
 from mlflow.tracking.client import MlflowClient
 
@@ -68,7 +70,7 @@ if not any(tag == tag_name for tag in tags.keys()):
 else:
   # if tag is found, check if it is approved
   if tags.get(tag_name).lower() == "approved":
-    print("Model version approved for deployment")
+    logger.info("Model version approved for deployment")
     
     client.set_registered_model_alias(
       name=model_name,

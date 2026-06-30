@@ -13,6 +13,8 @@ dbutils.widgets.text("min_dbr_version", "12.2", "Min required DBR version")
 
 # COMMAND ----------
 
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 import requests
 import collections
 import os
@@ -22,15 +24,15 @@ class DBDemos():
   @staticmethod
   def setup_schema(catalog, db, reset_all_data, volume_name = None):
     if reset_all_data:
-      print(f'clearing up volume named `{catalog}`.`{db}`.`{volume_name}`')
+      logger.info(f'clearing up volume named `{catalog}`.`{db}`.`{volume_name}`')
       try:
         spark.sql(f"DROP VOLUME IF EXISTS `{catalog}`.`{db}`.`{volume_name}`")
         spark.sql(f"DROP SCHEMA IF EXISTS `{catalog}`.`{db}` CASCADE")
       except Exception as e:
-        print(f'catalog `{catalog}` or schema `{db}` do not exist.  Skipping data reset')
+        logger.info(f'catalog `{catalog}` or schema `{db}` do not exist.  Skipping data reset')
 
     def use_and_create_db(catalog, dbName, cloud_storage_path = None):
-      print(f"USE CATALOG `{catalog}`")
+      logger.info(f"USE CATALOG `{catalog}`")
       spark.sql(f"USE CATALOG `{catalog}`")
       spark.sql(f"""create database if not exists `{dbName}` """)
 
@@ -55,11 +57,11 @@ class DBDemos():
             spark.sql(f'ALTER TABLE {catalog}.{db}.{t["tableName"]} OWNER TO `account users`')
           except Exception as e:
             if "NOT_IMPLEMENTED.TRANSFER_MATERIALIZED_VIEW_OWNERSHIP" not in str(e) and "STREAMING_TABLE_OPERATION_NOT_ALLOWED.UNSUPPORTED_OPERATION" not in str(e) :
-              print(f'WARN: Couldn t set table {catalog}.{db}.{t["tableName"]} owner to account users, error: {e}')
+              logger.info(f'WARN: Couldn t set table {catalog}.{db}.{t["tableName"]} owner to account users, error: {e}')
       except Exception as e:
-        print("Couldn't grant access to the schema to all users:"+str(e))    
+        logger.info("Couldn't grant access to the schema to all users:"+str(e))    
 
-    print(f"using catalog.database `{catalog}`.`{db}`")
+    logger.info(f"using catalog.database `{catalog}`.`{db}`")
     spark.sql(f"""USE `{catalog}`.`{db}`""")    
 
     if volume_name:
@@ -107,7 +109,7 @@ class DBDemos():
       # NOTE the stream=True parameter below
       with requests.get(url, stream=True) as r:
         r.raise_for_status()
-        print('saving '+destination+'/'+local_filename)
+        logger.info('saving '+destination+'/'+local_filename)
         with open(destination+'/'+local_filename, 'wb') as f:
           for chunk in r.iter_content(chunk_size=8192): 
             # If you have chunk encoded response uncomment if
@@ -143,10 +145,10 @@ class DBDemos():
     try:
       r = w.workspace.mkdirs(path=xp_root_path)
     except Exception as e:
-      print(f"ERROR: couldn't create a folder for the experiment under {xp_root_path} - please create the folder manually or  skip this init (used for job only: {e})")
+      logger.info(f"ERROR: couldn't create a folder for the experiment under {xp_root_path} - please create the folder manually or  skip this init (used for job only: {e})")
       raise e
     xp = f"{xp_root_path}/{experiment_name}"
-    print(f"Using common experiment under {xp}")
+    logger.info(f"Using common experiment under {xp}")
     mlflow.set_experiment(xp)
     DBDemos.set_experiment_permission(xp)
     return mlflow.get_experiment_by_name(xp)
@@ -161,9 +163,9 @@ class DBDemos():
       w.permissions.set("experiments", request_object_id=status.object_id,  access_control_list=[
                             iam.AccessControlRequest(group_name="users", permission_level=iam.PermissionLevel.CAN_MANAGE)])    
     except Exception as e:
-      print(f"error setting up shared experiment {experiment_path} permission: {e}")
+      logger.info(f"error setting up shared experiment {experiment_path} permission: {e}")
 
-    print(f"Experiment on {experiment_path} was set public")
+    logger.info(f"Experiment on {experiment_path} was set public")
 
 
   @staticmethod
@@ -185,25 +187,25 @@ class DBDemos():
     time.sleep(sleep_time)
     streams = DBDemos.get_active_streams(start_with)
     if len(streams) > 0:
-      print(f"Stopping {len(streams)} streams")
+      logger.info(f"Stopping {len(streams)} streams")
       for s in streams:
           try:
               s.stop()
           except:
               pass
-      print(f"All stream stopped {'' if len(start_with) == 0 else f'(starting with: {start_with}.)'}")
+      logger.info(f"All stream stopped {'' if len(start_with) == 0 else f'(starting with: {start_with}.)'}")
 
   @staticmethod
   def wait_for_all_stream(start = ""):
     import time
     actives = DBDemos.get_active_streams(start)
     if len(actives) > 0:
-      print(f"{len(actives)} streams still active, waiting... ({[s.name for s in actives]})")
+      logger.info(f"{len(actives)} streams still active, waiting... ({[s.name for s in actives]})")
     while len(actives) > 0:
       spark.streams.awaitAnyTermination()
       time.sleep(1)
       actives = DBDemos.get_active_streams(start)
-    print("All streams completed.")
+    logger.info("All streams completed.")
 
   @staticmethod
   def get_last_experiment(demo_name, experiment_path = "/Shared/dbdemos/experiments/"):
@@ -268,7 +270,7 @@ class DBDemos():
   def create_mockup_automl_run(full_xp_path, df, model_name=None, target_col=None):
     import mlflow
     import os
-    print("AutoML doesn't seem to be available, creating a mockup automl run instead - automl serverless will be added soon...")
+    logger.info("AutoML doesn't seem to be available, creating a mockup automl run instead - automl serverless will be added soon...")
     from databricks.sdk import WorkspaceClient
     # Initialize the WorkspaceClient
     w = WorkspaceClient()

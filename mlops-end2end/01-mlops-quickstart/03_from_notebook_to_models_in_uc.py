@@ -64,23 +64,25 @@ model_name = f"{catalog}.{db}.mlops_churn"
 
 # COMMAND ----------
 
-print(f"Finding best run from {xp_name} and pushing new model version to {model_name}")
+logger.info(f"Finding best run from {xp_name} and pushing new model version to {model_name}")
 mlflow.set_experiment(f"{xp_path}/{xp_name}")
 
 # COMMAND ----------
 
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 import mlflow
 
 
 xp_name = "dbdemos_mlops_churn_demo_quickstart"
-print(f"Finding best run from {xp_name}_* and pushing new model version to {model_name}")
+logger.info(f"Finding best run from {xp_name}_* and pushing new model version to {model_name}")
 xp_path = f"/Users/{current_user}"
 
 mlflow.set_experiment(f"{xp_path}/{xp_name}")
 
 
 experiment_id = mlflow.search_experiments(filter_string=f"name LIKE '{xp_path}/{xp_name}%'", order_by=["last_update_time DESC"])[0].experiment_id
-print(experiment_id)
+logger.info(experiment_id)
 
 # COMMAND ----------
 
@@ -102,7 +104,7 @@ best_model
 
 # COMMAND ----------
 
-print(f"Registering model to {model_name}")  # {model_name} is defined in the setup script
+logger.info(f"Registering model to {model_name}")  # {model_name} is defined in the setup script
 
 # Get the run id from the best model
 run_id = best_model.iloc[0]['run_id']

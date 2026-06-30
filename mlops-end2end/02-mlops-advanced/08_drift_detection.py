@@ -65,6 +65,8 @@ dbutils.widgets.text("model_id", "*", "Model Id")
 # COMMAND ----------
 
 # DBTITLE 1,Refresh the monitor
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 import time
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.catalog import MonitorInfoStatus, MonitorRefreshInfoState
@@ -240,7 +242,7 @@ all_violations_count = drift_violation_count + performance_violation_count
 
 # COMMAND ----------
 
-print(f"Total number of joint violations: {all_violations_count}")
+logger.info(f"Total number of joint violations: {all_violations_count}")
 
 # COMMAND ----------
 

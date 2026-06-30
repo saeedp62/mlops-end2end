@@ -46,6 +46,8 @@
 
 # COMMAND ----------
 
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 import os
 from churn.config import load_churn_config
 
@@ -57,19 +59,19 @@ config_path = os.environ.get(
 
 cfg = load_churn_config(config_path)
 
-print(f"Pipeline configuration:")
-print(f"  Catalog:           {cfg.catalog}")
-print(f"  Training schema:   {cfg.schemas.training_datasets}")
-print(f"  Feature schema:    {cfg.schemas.offline_features}")
-print(f"  Source type:       {cfg.data_source.type}")
+logger.info(f"Pipeline configuration:")
+logger.info(f"  Catalog:           {cfg.catalog}")
+logger.info(f"  Training schema:   {cfg.schemas.training_datasets}")
+logger.info(f"  Feature schema:    {cfg.schemas.offline_features}")
+logger.info(f"  Source type:       {cfg.data_source.type}")
 if cfg.data_source.type == "unity_catalog_table":
-    print(f"  Source table:      {cfg.data_source.source_table}")
+    logger.info(f"  Source table:      {cfg.data_source.source_table}")
 elif cfg.data_source.type == "volume_csv":
-    print(f"  Volume path:       {cfg.data_source.volume_path}")
-print(f"  Bronze table:      {cfg.full_bronze_table}")
-print(f"  Feature table:     {cfg.full_feature_table}")
-print(f"  Label table:       {cfg.full_label_table}")
-print(f"  Online store:      enabled={cfg.online_store.enabled}")
+    logger.info(f"  Volume path:       {cfg.data_source.volume_path}")
+logger.info(f"  Bronze table:      {cfg.full_bronze_table}")
+logger.info(f"  Feature table:     {cfg.full_feature_table}")
+logger.info(f"  Label table:       {cfg.full_label_table}")
+logger.info(f"  Online store:      enabled={cfg.online_store.enabled}")
 
 # COMMAND ----------
 
@@ -102,7 +104,7 @@ if cfg.data_source.type == "volume_csv":
         already_present = False
 
     if not already_present:
-        print(f"Downloading IBM Telco CSV to {volume_path} …")
+        logger.info(f"Downloading IBM Telco CSV to {volume_path} …")
         csv_url = (
             "https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/"
             "master/data/Telco-Customer-Churn.csv"
@@ -119,14 +121,14 @@ if cfg.data_source.type == "volume_csv":
                     r.text,
                     overwrite=True,
                 )
-                print(f"✓ CSV uploaded to {volume_path} ({len(r.content):,} bytes)")
+                logger.info(f"✓ CSV uploaded to {volume_path} ({len(r.content):,} bytes)")
                 break
             except Exception as exc:
-                print(f"  Failed from {url}: {exc}. Trying fallback…")
+                logger.info(f"  Failed from {url}: {exc}. Trying fallback…")
     else:
-        print(f"✓ File already present at {volume_path} – skipping download.")
+        logger.info(f"✓ File already present at {volume_path} – skipping download.")
 else:
-    print(f"Source type='{cfg.data_source.type}' – no upload needed.")
+    logger.info(f"Source type='{cfg.data_source.type}' – no upload needed.")
 
 # COMMAND ----------
 
@@ -161,17 +163,17 @@ run_feature_engineering_pipeline(
 
 # COMMAND ----------
 
-print("=== Bronze table (raw source data) ===")
+logger.info("=== Bronze table (raw source data) ===")
 display(spark.table(cfg.full_bronze_table))
 
 # COMMAND ----------
 
-print("=== Feature table ===")
+logger.info("=== Feature table ===")
 display(spark.table(cfg.full_feature_table))
 
 # COMMAND ----------
 
-print("=== Label table (with train/test split) ===")
+logger.info("=== Label table (with train/test split) ===")
 display(
     spark.table(cfg.full_label_table)
     .groupBy("split")
@@ -207,7 +209,7 @@ spark.sql(f"""
   $$
 """)
 
-print(f"Feature function created: {cfg.catalog}.{cfg.schemas.offline_features}.avg_price_increase")
+logger.info(f"Feature function created: {cfg.catalog}.{cfg.schemas.offline_features}.avg_price_increase")
 
 # COMMAND ----------
 

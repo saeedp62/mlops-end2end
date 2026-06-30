@@ -32,7 +32,7 @@ Or call the shared utility directly (for custom schema sets)::
 
 from __future__ import annotations
 
-import logging
+from mlops_utils.logger import get_logger
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 from mlops_utils.catalog import ensure_mlops_schemas
 from churn.config import ChurnConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def ensure_schemas(spark: "SparkSession", cfg: ChurnConfig) -> None:

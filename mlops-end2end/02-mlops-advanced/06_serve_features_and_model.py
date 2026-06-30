@@ -137,6 +137,8 @@ is_smoke_test = dbutils.widgets.get("smoke_test").lower() == "true"
 
 # COMMAND ----------
 
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 from databricks.feature_engineering import FeatureEngineeringClient
 
 
@@ -146,10 +148,10 @@ fe = FeatureEngineeringClient()
 # Set Online Store Name
 # Change it to avoid conflict if you want to redeploy a new version
 online_store_name = dbutils.widgets.get("online_store_name") # dbdemosonlinestore
-print(f'Using online store: {online_store_name}')
+logger.info(f'Using online store: {online_store_name}')
 
 endpoint_name = ("advanced_mlops_churn_" + current_user_az)[:50]
-print(f'Using endoint name: {endpoint_name}')
+logger.info(f'Using endoint name: {endpoint_name}')
 
 # Check if exists
 online_store = fe.get_online_store(name=online_store_name)
@@ -160,8 +162,8 @@ from time import time
 
 
 if online_store:
-  print(f"Online store exists:")
-  print(f"Store: {online_store.name}, State: {online_store.state}, Capacity: {online_store.capacity}")
+  logger.info(f"Online store exists:")
+  logger.info(f"Store: {online_store.name}, State: {online_store.state}, Capacity: {online_store.capacity}")
 
   # Update the capacity of online store
   # updated_store = fe.update_online_store(
@@ -174,7 +176,7 @@ if online_store:
     fe.delete_online_store(name=online_store_name)
     time.sleep(60)
 
-    print(f"Dropping/Recreating it.")
+    logger.info(f"Dropping/Recreating it.")
     online_store = fe.create_online_store(
       name=online_store_name,
       capacity="CU_1"
@@ -182,7 +184,7 @@ if online_store:
 
 elif not online_store and not is_smoke_test:
   # Create an online store with specified capacity & wait
-  print(f"Creating Online store: {online_store_name}")
+  logger.info(f"Creating Online store: {online_store_name}")
   online_store = fe.create_online_store(
       name=online_store_name,
       capacity="CU_1"  # Valid options: "CU_1", "CU_2", "CU_4", "CU_8"
@@ -194,7 +196,7 @@ import time
 
 
 if not is_smoke_test:
-    print(f"Publishing feature table to online store...")
+    logger.info(f"Publishing feature table to online store...")
     max_retries = 5
     retry_count = 0
     while retry_count < max_retries:
@@ -208,13 +210,13 @@ if not is_smoke_test:
             break
         except Exception as e:
             if "feature sync is currently in progress" in str(e):
-                print("Feature sync in progress, retrying...")
+                logger.info("Feature sync in progress, retrying...")
                 retry_count += 1
                 time.sleep(10)  # Wait for 10 seconds before retrying
             else:
                 raise e
     else:
-        print("Failed to publish after multiple retries.")
+        logger.info("Failed to publish after multiple retries.")
 
 # COMMAND ----------
 
@@ -398,7 +400,7 @@ if not is_smoke_test:
         traffic_config=endpoint_config.traffic_config
       )
     
-    print(f"Updating endpoint {endpoint_name} with models {model_name} version {model_version}")
+    logger.info(f"Updating endpoint {endpoint_name} with models {model_name} version {model_version}")
 
   except ResourceDoesNotExist:
     w.serving_endpoints.create(
@@ -407,7 +409,7 @@ if not is_smoke_test:
       tags=[EndpointTag.from_dict({"key": "dbdemos", "value": "advanced_mlops_churn"})]
     )
     
-    print(f"Creating endpoint {endpoint_name} with models {model_name} version {model_version}")
+    logger.info(f"Creating endpoint {endpoint_name} with models {model_name} version {model_version}")
 
 # COMMAND ----------
 
@@ -488,9 +490,9 @@ import time
 # Wait 60 seconds for the endpoint so that the endpoint is fully ready to handle errors in the next command
 # time.sleep(60)
 
-print("Churn inference:")
+logger.info("Churn inference:")
 response = w.serving_endpoints.query(name=f"{endpoint_name}", dataframe_records=dataframe_records)
-print(response.predictions)
+logger.info(response.predictions)
 
 # COMMAND ----------
 

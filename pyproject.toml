@@ -43,7 +43,7 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "C4", "ANN"]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "ANN", "T20"]
 ignore = ["ANN101", "ANN102", "ANN401"]
 
 [tool.mypy]

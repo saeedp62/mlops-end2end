@@ -17,14 +17,14 @@ Usage (invoked automatically by the DAB job task)::
 from __future__ import annotations
 
 import argparse
-import logging
+from mlops_utils.logger import get_logger
 import sys
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def main() -> None:

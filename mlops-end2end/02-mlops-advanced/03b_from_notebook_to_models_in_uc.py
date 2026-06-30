@@ -59,12 +59,14 @@
 
 # COMMAND ----------
 
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 import mlflow
 
 
 model_name = f"{catalog}.{db}.advanced_mlops_churn"
 
-print(f"Finding best run from {xp_name} and pushing new model version to {model_name}")
+logger.info(f"Finding best run from {xp_name} and pushing new model version to {model_name}")
 mlflow.set_experiment(f"{xp_path}/{xp_name}")
 
 # COMMAND ----------
@@ -101,7 +103,7 @@ run_id = best_model.iloc[0]['run_id']
 # COMMAND ----------
 
 # Register best model from experiments run to MLflow model registry
-print(f"Registering model to {catalog}.{db}.advanced_mlops_churn")
+logger.info(f"Registering model to {catalog}.{db}.advanced_mlops_churn")
 model_details = mlflow.register_model(f"runs:/{run_id}/model", f"{catalog}.{db}.advanced_mlops_churn")
 
 # COMMAND ----------

@@ -56,6 +56,8 @@
 
 # COMMAND ----------
 
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 from mlflow.store.artifact.models_artifact_repo import ModelsArtifactRepository
 
 
@@ -89,7 +91,7 @@ client = MlflowClient()
 model_details = client.get_model_version_by_alias(model_name, model_alias)
 model_version = int(model_details.version)
 
-print(f"Validating {model_alias} model for {model_name} on model version {model_version}")
+logger.info(f"Validating {model_alias} model for {model_name} on model version {model_version}")
 
 # COMMAND ----------
 
@@ -108,14 +110,14 @@ print(f"Validating {model_alias} model for {model_name} on model version {model_
 # If there's no description or an insufficient number of characters, tag accordingly
 if not model_details.description:
   has_description = False
-  print("Please add model description")
+  logger.info("Please add model description")
 elif not len(model_details.description) > 20:
   has_description = False
-  print("Please add detailed model description (40 char min).")
+  logger.info("Please add detailed model description (40 char min).")
 else:
   has_description = True
 
-print(f'Model {model_name} version {model_details.version} has description: {has_description}')
+logger.info(f'Model {model_name} version {model_details.version} has description: {has_description}')
 client.set_model_version_tag(name=model_name, version=str(model_details.version), key="has_description", value=has_description)
 
 # COMMAND ----------
@@ -138,13 +140,13 @@ try:
     #Compare the challenger f1 score to the existing champion if it exists
     champion_model = client.get_model_version_by_alias(model_name, "Champion")
     champion_f1 = mlflow.get_run(champion_model.run_id).data.metrics['val_f1_score']
-    print(f'Champion f1 score: {champion_f1}. Challenger f1 score: {f1_score}.')
+    logger.info(f'Champion f1 score: {champion_f1}. Challenger f1 score: {f1_score}.')
     metric_f1_passed = f1_score >= champion_f1
 except:
-    print(f"No Champion found. Accept the model as it's the first one.")
+    logger.info(f"No Champion found. Accept the model as it's the first one.")
     metric_f1_passed = True
 
-print(f'Model {model_name} version {model_details.version} metric_f1_passed: {metric_f1_passed}')
+logger.info(f'Model {model_name} version {model_details.version} metric_f1_passed: {metric_f1_passed}')
 # Tag that F1 metric check has passed
 client.set_model_version_tag(name=model_name, version=model_details.version, key="metric_f1_passed", value=metric_f1_passed)
 
@@ -196,9 +198,9 @@ def get_model_value_in_dollar(model_alias):
 is_champ_model_exist = True
 try:
     client.get_model_version_by_alias(f"{catalog}.{db}.mlops_churn", "Champion")
-    print("Model already registered as Champion")
+    logger.info("Model already registered as Champion")
 except Exception as error:
-    print("An error occurred:", type(error).__name__, "It means no champion model yet exist")
+    logger.info("An error occurred:", type(error).__name__, "It means no champion model yet exist")
     is_champ_model_exist = False
 if is_champ_model_exist:
     champion_potential_revenue_gain = get_model_value_in_dollar("Champion")
@@ -208,7 +210,7 @@ try:
     #Compare the challenger f1 score to the existing champion if it exists
     champion_potential_revenue_gain = get_model_value_in_dollar("Champion")
 except:
-    print(f"No Champion found. Accept the model as it's the first one.")
+    logger.info(f"No Champion found. Accept the model as it's the first one.")
     champion_potential_revenue_gain = 0
     
 challenger_potential_revenue_gain = get_model_value_in_dollar("Challenger")
@@ -243,7 +245,7 @@ results.tags
 # COMMAND ----------
 
 if results.tags["has_description"] == "True" and results.tags["metric_f1_passed"] == "True":
-  print('register model as Champion!')
+  logger.info('register model as Champion!')
   client.set_registered_model_alias(
     name=model_name,
     alias="Champion",

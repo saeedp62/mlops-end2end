@@ -36,7 +36,7 @@ Usage
 
 from __future__ import annotations
 
-import logging
+from mlops_utils.logger import get_logger
 import os
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, TYPE_CHECKING
@@ -44,7 +44,7 @@ from typing import Any, Callable, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from mlflow import MlflowClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # A check is a zero-argument callable that returns a (passed, message) tuple.
 CheckFn = Callable[[], tuple[bool, str]]

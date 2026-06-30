@@ -12,6 +12,8 @@ is_advanced_mlops_demo = dbutils.widgets.get("adv_mlops") == "true"
 
 # COMMAND ----------
 
+from mlops_utils.logger import get_logger
+logger = get_logger(__name__)
 import re
 current_user = dbutils.notebook.entry_point.getDbutils().notebook().getContext().userName().get()
 reformat_current_user = current_user.split("@")[0].lower().replace(".", "_")
@@ -58,7 +60,7 @@ try:
   w = WorkspaceClient()
   r = w.workspace.mkdirs(path=xp_path)
 except Exception as e:
-  print(f"ERROR: couldn't create a folder for the experiment under {xp_path} - please create the folder manually or  skip this init (used for job only: {e})")
+  logger.info(f"ERROR: couldn't create a folder for the experiment under {xp_path} - please create the folder manually or  skip this init (used for job only: {e})")
   raise e
 
 client = MlflowClient()
@@ -90,17 +92,17 @@ if reset_all_data or not spark.catalog.tableExists(bronze_table_name):
     from databricks.sdk import WorkspaceClient
     w = WorkspaceClient()
     try:
-      print(f"Deleting existing monitors for {catalog}.{db}.advanced_churn_inference_table")
+      logger.info(f"Deleting existing monitors for {catalog}.{db}.advanced_churn_inference_table")
       w.quality_monitors.delete(table_name=f"{catalog}.{db}.advanced_churn_inference_table")
     except Exception as error:
-      print(f"Error deleting monitor: {type(error).__name__}")
+      logger.info(f"Error deleting monitor: {type(error).__name__}")
     experiment_details = client.get_experiment_by_name(f"{xp_path}/{xp_name}")
     if experiment_details:
-      print(f' Deleting experiment: {experiment_details.experiment_id}')
+      logger.info(f' Deleting experiment: {experiment_details.experiment_id}')
       client.delete_experiment(f'{experiment_details.experiment_id}')
   
   df = cleanup_column(df)
-  print(f"creating `{bronze_table_name}` raw table")
+  logger.info(f"creating `{bronze_table_name}` raw table")
   spark.createDataFrame(df).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(bronze_table_name)
 
 # COMMAND ----------
@@ -113,9 +115,9 @@ def delete_feature_store_table(catalog, db, feature_table_name):
     fe.drop_table(name=f"{catalog}.{db}.{feature_table_name}")
     # Delete underyling delta tables
     spark.sql(f"DROP TABLE IF EXISTS {catalog}.{db}.{feature_table_name}")
-    print(f"Dropping Feature Table {catalog}.{db}.{feature_table_name}")
+    logger.info(f"Dropping Feature Table {catalog}.{db}.{feature_table_name}")
   except ValueError as ve:
-    print(f"Feature Table {catalog}.{db}.{feature_table_name} doesn't exist")
+    logger.info(f"Feature Table {catalog}.{db}.{feature_table_name} doesn't exist")
 
 # COMMAND ----------
 
@@ -128,11 +130,11 @@ if setup_inference_data:
   if spark.catalog.tableExists(f"{catalog}.{db}.{quickstart_training_table_name}"):
     # This should only be called from the quickstart challenger validation or batch inference notebooks
     if not spark.catalog.tableExists(f"{catalog}.{db}.{quickstart_unlabelled_table_name}"):
-      print("Creating unlabelled data table for performing inference...")
+      logger.info("Creating unlabelled data table for performing inference...")
       # Drop the label column for inference
       spark.read.table(quickstart_training_table_name).drop("churn").write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(quickstart_unlabelled_table_name)
   else:
-    print("Training table doesn't exist, please run the notebook '01_feature_engineering'")
+    logger.info("Training table doesn't exist, please run the notebook '01_feature_engineering'")
 
 # COMMAND ----------
 
@@ -145,11 +147,11 @@ if setup_adv_inference_data:
   if spark.catalog.tableExists(f"advanced_churn_label_table"):
     # This should only be called from the advanced batch inference notebook
     # if not spark.catalog.tableExists(f"advanced_churn_cust_ids"):
-    print("Creating table with customer records for inference...")
+    logger.info("Creating table with customer records for inference...")
     # Drop the label column for inference
     spark.read.table("advanced_churn_label_table").drop("churn").write.mode("overwrite").option("overwriteSchema", "true").saveAsTable("advanced_churn_cust_ids")
   else:
-    print("Label table `advanced_churn_label_table` doesn't exist, please run the notebook '01_feature_engineering'")
+    logger.info("Label table `advanced_churn_label_table` doesn't exist, please run the notebook '01_feature_engineering'")
 
 # COMMAND ----------
 

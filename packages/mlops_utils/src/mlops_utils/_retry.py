@@ -5,11 +5,11 @@ Internal module providing a retry decorator for Databricks API calls.
 """
 
 import functools
-import logging
+from mlops_utils.logger import get_logger
 import time
 from typing import Any, Callable, TypeVar
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 F = TypeVar('F', bound=Callable[..., Any])
 
