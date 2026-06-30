@@ -18,9 +18,7 @@ Usage::
 
 from __future__ import annotations
 
-import pandera as pa
-from pandera import Column, DataFrameSchema, Check
-
+from pandera.pandas import Check, Column, DataFrameSchema
 
 # ---------------------------------------------------------------------------
 # Bronze / raw customer table schema

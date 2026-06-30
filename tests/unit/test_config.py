@@ -15,7 +15,6 @@ from pathlib import Path
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Shared helper – minimal valid schemas block for inline test YAMLs
 # ---------------------------------------------------------------------------
@@ -108,7 +107,7 @@ class TestLoadChurnConfig:
 
     def test_schemas_absent_uses_dataclass_defaults(self, tmp_path):
         """When 'schemas:' block is omitted, SchemaConfig dataclass defaults apply."""
-        from churn.config import load_churn_config, SchemaConfig
+        from churn.config import SchemaConfig, load_churn_config
 
         cfg_file = self._write_config(tmp_path, "catalog: lighthouse_bkk6_analytics\n")
         cfg = load_churn_config(cfg_file)

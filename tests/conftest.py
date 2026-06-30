@@ -22,7 +22,6 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # SparkSession fixture  (scope=session → created once per test run)
 # ---------------------------------------------------------------------------

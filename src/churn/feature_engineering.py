@@ -24,9 +24,11 @@ Public API
 
 from __future__ import annotations
 
-from mlops_utils.logger import get_logger
+import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
+
+from mlops_utils.logger import get_logger
 
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame as SparkDataFrame
@@ -51,7 +53,7 @@ _NULL_FILL_COLS = {
 }
 
 
-def compute_service_features(df: "SparkDataFrame") -> "SparkDataFrame":
+def compute_service_features(df: SparkDataFrame) -> SparkDataFrame:
     """Add ``num_optional_services`` column – count of optional services enabled.
 
     Uses a Pandas UDF so the computation scales across the full Spark cluster.
@@ -78,7 +80,7 @@ def compute_service_features(df: "SparkDataFrame") -> "SparkDataFrame":
     )
 
 
-def clean_churn_features(df: "SparkDataFrame") -> "SparkDataFrame":
+def clean_churn_features(df: SparkDataFrame) -> SparkDataFrame:
     """Clean and type-cast raw bronze columns using the Pandas-on-Spark API.
 
     Transformations applied:
@@ -114,11 +116,11 @@ def clean_churn_features(df: "SparkDataFrame") -> "SparkDataFrame":
 
 
 def add_transaction_timestamp(
-    df: "SparkDataFrame",
+    df: SparkDataFrame,
     *,
     timestamp: datetime | None = None,
     col_name: str = "transaction_ts",
-) -> "SparkDataFrame":
+) -> SparkDataFrame:
     """Append a ``transaction_ts`` timestamp column to *df*.
 
     Parameters
@@ -140,7 +142,7 @@ def add_transaction_timestamp(
     return df.withColumn(col_name, lit(ts.timestamp()).cast("timestamp"))
 
 
-def build_feature_df(bronze_df: "SparkDataFrame") -> "SparkDataFrame":
+def build_feature_df(bronze_df: SparkDataFrame) -> SparkDataFrame:
     """Compose all feature-engineering steps into a single transformation.
 
     Pipeline:
@@ -166,12 +168,13 @@ def build_feature_df(bronze_df: "SparkDataFrame") -> "SparkDataFrame":
 
 
 def split_label_from_features(
-    df: "SparkDataFrame",
+    df: SparkDataFrame,
     label_col: str = "churn",
     *,
     train_ratio: float = 0.8,
     seed: int = 42,
-) -> tuple["SparkDataFrame", "SparkDataFrame"]:
+    strategy: str = "random",
+) -> tuple[SparkDataFrame, SparkDataFrame]:
     """Split *df* into a feature DataFrame and a label DataFrame.
 
     Adds a ``split`` column (``"train"`` / ``"test"``) to the label table.
@@ -187,7 +190,9 @@ def split_label_from_features(
     train_ratio:
         Fraction of rows assigned to ``"train"`` split.
     seed:
-        Random seed for reproducible splitting.
+        Random seed for reproducible splitting (if strategy="random").
+    strategy:
+        "random" or "time". If "time", splits out-of-time using `transaction_ts`.
 
     Returns
     -------
@@ -197,20 +202,29 @@ def split_label_from_features(
     """
     import pyspark.sql.functions as F
 
-    label_df = (
-        df.select("customer_id", "transaction_ts", label_col)
-        .withColumn("random", F.rand(seed=seed))
-        .withColumn(
-            "split",
-            F.when(F.col("random") < train_ratio, "train").otherwise("test"),
+    label_df_raw = df.select("customer_id", "transaction_ts", label_col)
+
+    if strategy == "time":
+        from mlops_utils.data_splitting import time_based_split_spark
+        label_df = time_based_split_spark(
+            label_df_raw, time_col="transaction_ts", train_ratio=train_ratio
         )
-        .drop("random")
-    )
+    else:
+        label_df = (
+            label_df_raw
+            .withColumn("random", F.rand(seed=seed))
+            .withColumn(
+                "split",
+                F.when(F.col("random") < train_ratio, "train").otherwise("test"),
+            )
+            .drop("random")
+        )
 
     feature_df = df.drop(label_col)
 
     logger.info(
-        "Split: %s rows total (%.0f%% train target).",
+        "Split (strategy=%s): %s rows total (%.0f%% train target).",
+        strategy,
         df.count() if logger.isEnabledFor(logging.DEBUG) else "?",
         train_ratio * 100,
     )
@@ -218,9 +232,9 @@ def split_label_from_features(
 
 
 def get_latest_label_per_customer(
-    labels_df: "SparkDataFrame",
+    labels_df: SparkDataFrame,
     label_col: str = "churn",
-) -> "SparkDataFrame":
+) -> SparkDataFrame:
     """Return the most recent label row per customer.
 
     Used before building the training set to ensure a single row per
@@ -238,7 +252,8 @@ def get_latest_label_per_customer(
     -------
     Spark DataFrame with one row per ``customer_id``.
     """
-    from pyspark.sql.functions import col, last, max as spark_max
+    from pyspark.sql.functions import last
+    from pyspark.sql.functions import max as spark_max
 
     return (
         labels_df
@@ -251,7 +266,7 @@ def get_latest_label_per_customer(
     )
 
 
-def build_churn_feature_lookups(cfg: "Any", fsm: "Any" = None) -> list["Any"]:
+def build_churn_feature_lookups(cfg: Any, fsm: Any = None) -> list[Any]:
     """Return standard FeatureLookup + FeatureFunction specs from a ChurnConfig."""
     from databricks.feature_engineering import FeatureFunction
 
@@ -280,10 +295,10 @@ def build_churn_feature_lookups(cfg: "Any", fsm: "Any" = None) -> list["Any"]:
             output_name="avg_price_increase",
             input_bindings={
                 "monthly_charges_in": "monthly_charges",
-                "tenure_in": "tenure_months",
+                "tenure_in": "tenure",
                 "total_charges_in": "total_charges",
             },
         )
     )
-    
+
     return lookups

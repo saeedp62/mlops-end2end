@@ -32,19 +32,21 @@ Or call the shared utility directly (for custom schema sets)::
 
 from __future__ import annotations
 
-from mlops_utils.logger import get_logger
 from typing import TYPE_CHECKING
+
+from mlops_utils.logger import get_logger
 
 if TYPE_CHECKING:
     from pyspark.sql import SparkSession
 
 from mlops_utils.catalog import ensure_mlops_schemas
+
 from churn.config import ChurnConfig
 
 logger = get_logger(__name__)
 
 
-def ensure_schemas(spark: "SparkSession", cfg: ChurnConfig) -> None:
+def ensure_schemas(spark: SparkSession, cfg: ChurnConfig) -> None:
     """Bootstrap all MLOps schemas required by the churn pipeline.
 
     Delegates to :func:`mlops_utils.catalog.ensure_mlops_schemas` — the

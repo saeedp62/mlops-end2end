@@ -16,9 +16,8 @@ Usage::
 
 from __future__ import annotations
 
-from sklearn.compose import ColumnTransformer
-
 from mlops_utils.preprocessing import build_column_transformer
+from sklearn.compose import ColumnTransformer
 
 # ---------------------------------------------------------------------------
 # Column group definitions

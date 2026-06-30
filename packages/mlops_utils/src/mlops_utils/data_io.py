@@ -21,18 +21,17 @@ Public API
 from __future__ import annotations
 
 from mlops_utils.logger import get_logger
-from typing import Optional
 
 logger = get_logger(__name__)
 
 
 def read_delta(
-    spark: "pyspark.sql.SparkSession",  # type: ignore[name-defined]  # noqa: F821
+    spark: pyspark.sql.SparkSession,  # type: ignore[name-defined]  # noqa: F821
     full_table_name: str,
     *,
-    filters: Optional[str] = None,
-    columns: Optional[list[str]] = None,
-) -> "pyspark.sql.DataFrame":  # type: ignore[name-defined]  # noqa: F821
+    filters: str | None = None,
+    columns: list[str] | None = None,
+) -> pyspark.sql.DataFrame:  # type: ignore[name-defined]  # noqa: F821
     """Read a Delta table into a Spark DataFrame.
 
     Parameters
@@ -64,13 +63,13 @@ def read_delta(
 
 
 def write_delta(
-    df: "pyspark.sql.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+    df: pyspark.sql.DataFrame,  # type: ignore[name-defined]  # noqa: F821
     full_table_name: str,
     *,
     mode: str = "overwrite",
-    partition_by: Optional[list[str]] = None,
-    options: Optional[dict[str, str]] = None,
-    comment: Optional[str] = None,
+    partition_by: list[str] | None = None,
+    options: dict[str, str] | None = None,
+    comment: str | None = None,
 ) -> None:
     """Write a DataFrame to a Delta table.
 
@@ -114,11 +113,11 @@ def write_delta(
 
 
 def upsert_delta(
-    df: "pyspark.sql.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+    df: pyspark.sql.DataFrame,  # type: ignore[name-defined]  # noqa: F821
     full_table_name: str,
     merge_keys: list[str],
     *,
-    update_columns: Optional[list[str]] = None,
+    update_columns: list[str] | None = None,
     insert_all: bool = True,
 ) -> None:
     """MERGE (upsert) *df* into an existing Delta table.
@@ -169,12 +168,12 @@ def upsert_delta(
 
 
 def add_primary_key_constraint(
-    spark: "pyspark.sql.SparkSession",  # type: ignore[name-defined]  # noqa: F821
+    spark: pyspark.sql.SparkSession,  # type: ignore[name-defined]  # noqa: F821
     full_table_name: str,
     constraint_name: str,
     key_columns: list[str],
     *,
-    timeseries_columns: Optional[list[str]] = None,
+    timeseries_columns: list[str] | None = None,
 ) -> None:
     """Add a PRIMARY KEY constraint to a Delta table (required for UC Feature Tables).
 
@@ -216,7 +215,7 @@ def add_primary_key_constraint(
     logger.info("Added PK constraint '%s' on '%s'.", constraint_name, full_table_name)
 
 
-def _safe_sql(spark: "pyspark.sql.SparkSession", statement: str) -> None:  # type: ignore[name-defined]  # noqa: F821
+def _safe_sql(spark: pyspark.sql.SparkSession, statement: str) -> None:  # type: ignore[name-defined]  # noqa: F821
     try:
         spark.sql(statement)
     except Exception as exc:  # noqa: BLE001

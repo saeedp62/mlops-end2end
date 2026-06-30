@@ -82,10 +82,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from mlops_utils.config_loader import load_config, merge_configs
-
 
 # Valid source type identifiers
 _SOURCE_TYPES = frozenset({"unity_catalog_table", "volume_csv", "http_csv"})
@@ -233,6 +232,16 @@ class OnlineStoreConfig:
 
 
 @dataclass
+class HpoConfig:
+    """Hyperparameter optimization configuration."""
+
+    n_trials: int = 8
+    n_jobs: int = 1
+    timeout: int | None = None
+    run_name: str = "mlops-hpo-best-run"
+
+
+@dataclass
 class ChurnConfig:
     """All configuration for the churn MLOps pipeline.
 
@@ -277,6 +286,8 @@ class ChurnConfig:
         Data source strategy – cross-LOB UC table, Volume CSV, or HTTP CSV.
     online_store:
         Online Feature Store configuration.
+    hpo:
+        Hyperparameter optimization configuration.
     """
 
     catalog: str = "lighthouse_bkk6_analytics"
@@ -295,6 +306,7 @@ class ChurnConfig:
     experiment_name: str = "advanced_mlops_churn_experiment"
     data_source: DataSourceConfig = field(default_factory=DataSourceConfig)
     online_store: OnlineStoreConfig = field(default_factory=OnlineStoreConfig)
+    hpo: HpoConfig = field(default_factory=HpoConfig)
 
     # -----------------------------------------------------------------------
     # Derived properties — each table resolves to its correct schema
@@ -343,7 +355,7 @@ class ChurnConfig:
 def load_churn_config(
     config_path: str | Path,
     *,
-    base_path: Optional[str | Path] = None,
+    base_path: str | Path | None = None,
 ) -> ChurnConfig:
     """Load a YAML/JSON config file and return a validated ``ChurnConfig``.
 

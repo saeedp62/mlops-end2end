@@ -1,15 +1,12 @@
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
 from mlops_utils.feature_store import (
     FeatureStoreManager,
-    create_or_replace_feature_table,
-    write_feature_table,
-    build_training_set,
-    score_batch_wrapper,
     create_feature_serving_endpoint,
     publish_online_if_enabled,
 )
+
 
 @pytest.fixture
 def mock_fe_client():
@@ -80,7 +77,7 @@ class TestFeatureStoreManager:
         df_mock = MagicMock()
         mock_ts = MagicMock()
         mock_fe_client.create_training_set.return_value = mock_ts
-        
+
         res = fsm.build_training_set(df_mock, [], "label")
         mock_fe_client.create_training_set.assert_called_once()
         mock_ts.load_df.assert_called_once()
@@ -132,9 +129,9 @@ class TestFeatureStoreManager:
         with patch('databricks.sdk.WorkspaceClient') as mock_wc:
             mock_w = mock_wc.return_value
             mock_w.online_tables.get.side_effect = Exception("Not found")
-            
+
             fsm.sync_online_table("my_table", ["id"])
-            
+
             mock_w.online_tables.get.assert_called_once_with("test_catalog.online_schema.my_table")
             mock_w.online_tables.create.assert_called_once()
             args, kwargs = mock_w.online_tables.create.call_args
@@ -146,7 +143,7 @@ class TestFeatureStoreManager:
         with patch('databricks.sdk.WorkspaceClient') as mock_wc:
             mock_w = mock_wc.return_value
             # .get does not raise
-            
+
             fsm.sync_online_table("my_table", ["id"])
             mock_w.online_tables.get.assert_called_once()
             mock_w.online_tables.create.assert_not_called()
@@ -158,7 +155,7 @@ class TestFeatureStoreManager:
             mock_response = MagicMock()
             mock_response.predictions = [0.5]
             mock_w.serving_endpoints.query.return_value = mock_response
-            
+
             res = fsm.query_endpoint("my_endpoint", records)
             mock_w.serving_endpoints.query.assert_called_once_with(
                 name="my_endpoint",
@@ -168,20 +165,20 @@ class TestFeatureStoreManager:
 
     def test_dry_run_bypasses_mutations(self, fsm, mock_fe_client):
         fsm.dry_run = True
-        
+
         # Test methods that should be bypassed
         fsm.drop_table("my_table")
         fsm.set_tags("my_table", {"k": "v"})
         fsm.update_description("my_table", "test")
         fsm.sync_online_table("my_table", ["id"])
-        
+
         # fe shouldn't be touched for these
         mock_fe_client.drop_table.assert_not_called()
         mock_fe_client.set_feature_table_tag.assert_not_called()
-        
+
         with patch('mlops_utils.spark_utils.get_or_create_spark') as mock_spark:
             mock_spark.assert_not_called()
-            
+
         with patch('databricks.sdk.WorkspaceClient') as mock_wc:
             mock_wc.assert_not_called()
 
@@ -213,7 +210,7 @@ def test_create_feature_serving_endpoint_creates():
 def test_create_feature_serving_endpoint_updates_on_exception():
     mock_w = MagicMock()
     mock_w.serving_endpoints.create_and_wait.side_effect = Exception("Already exists")
-    
+
     with patch('databricks.sdk.service.serving.EndpointCoreConfigInput', create=True):
         res = create_feature_serving_endpoint("my_endpoint", [], workspace_client=mock_w)
         mock_w.serving_endpoints.create_and_wait.assert_called_once()

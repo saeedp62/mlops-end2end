@@ -17,9 +17,9 @@ Public API
 
 from __future__ import annotations
 
-from mlops_utils.logger import get_logger
 import time
-from typing import Optional
+
+from mlops_utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -28,8 +28,8 @@ def get_or_create_spark(
     app_name: str = "mlops",
     *,
     master: str = "local[*]",
-    extra_configs: Optional[dict[str, str]] = None,
-) -> "pyspark.sql.SparkSession":  # type: ignore[name-defined]  # noqa: F821
+    extra_configs: dict[str, str] | None = None,
+) -> pyspark.sql.SparkSession:  # type: ignore[name-defined]  # noqa: F821
     """Return a SparkSession, reusing any session that already exists.
 
     On Databricks the pre-existing ``spark`` session is always returned
@@ -75,7 +75,7 @@ def get_or_create_spark(
     return spark
 
 
-def table_exists(spark: "pyspark.sql.SparkSession", full_table_name: str) -> bool:  # type: ignore[name-defined]  # noqa: F821
+def table_exists(spark: pyspark.sql.SparkSession, full_table_name: str) -> bool:  # type: ignore[name-defined]  # noqa: F821
     """Return ``True`` if *full_table_name* exists in the metastore.
 
     Parameters
@@ -93,7 +93,7 @@ def table_exists(spark: "pyspark.sql.SparkSession", full_table_name: str) -> boo
 
 
 def wait_for_table(
-    spark: "pyspark.sql.SparkSession",  # type: ignore[name-defined]  # noqa: F821
+    spark: pyspark.sql.SparkSession,  # type: ignore[name-defined]  # noqa: F821
     full_table_name: str,
     *,
     timeout_seconds: int = 120,

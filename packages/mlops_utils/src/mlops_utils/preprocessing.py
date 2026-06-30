@@ -23,9 +23,6 @@ Public API
 from __future__ import annotations
 
 from mlops_utils.logger import get_logger
-from typing import Optional
-
-import numpy as np
 
 logger = get_logger(__name__)
 
@@ -39,7 +36,7 @@ def build_boolean_pipeline(
     *,
     imputer_strategy: str = "most_frequent",
     drop_first: bool = True,
-) -> tuple[str, "Pipeline", list[str]]:  # type: ignore[name-defined]  # noqa: F821
+) -> tuple[str, Pipeline, list[str]]:  # type: ignore[name-defined]  # noqa: F821
     """Build a pipeline for binary (Yes/No) columns.
 
     Steps:
@@ -93,7 +90,7 @@ def build_numerical_pipeline(
     *,
     imputer_strategy: str = "mean",
     scale: bool = True,
-) -> tuple[str, "Pipeline", list[str]]:  # type: ignore[name-defined]  # noqa: F821
+) -> tuple[str, Pipeline, list[str]]:  # type: ignore[name-defined]  # noqa: F821
     """Build a pipeline for numerical columns.
 
     Steps:
@@ -146,7 +143,7 @@ def build_categorical_ohe_pipeline(
     *,
     imputer_strategy: str = "most_frequent",
     handle_unknown: str = "ignore",
-) -> tuple[str, "Pipeline", list[str]]:  # type: ignore[name-defined]  # noqa: F821
+) -> tuple[str, Pipeline, list[str]]:  # type: ignore[name-defined]  # noqa: F821
     """Build a pipeline for low-cardinality categorical columns (one-hot encoding).
 
     Parameters
@@ -198,10 +195,10 @@ def build_column_transformer(
     remainder: str = "drop",
     sparse_threshold: float = 0.0,
     # Per-pipeline overrides
-    bool_kwargs: Optional[dict] = None,
-    num_kwargs: Optional[dict] = None,
-    cat_kwargs: Optional[dict] = None,
-) -> "ColumnTransformer":  # type: ignore[name-defined]  # noqa: F821
+    bool_kwargs: dict | None = None,
+    num_kwargs: dict | None = None,
+    cat_kwargs: dict | None = None,
+) -> ColumnTransformer:  # type: ignore[name-defined]  # noqa: F821
     """Compose a full ``ColumnTransformer`` from three column groups.
 
     Parameters

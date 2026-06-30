@@ -31,12 +31,13 @@ the remainder lowercased:
 from __future__ import annotations
 
 import json
-from mlops_utils.logger import get_logger
 import os
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from mlops_utils.logger import get_logger
 
 logger = get_logger(__name__)
 

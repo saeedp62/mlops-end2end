@@ -36,10 +36,12 @@ Usage
 
 from __future__ import annotations
 
-from mlops_utils.logger import get_logger
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from mlops_utils.logger import get_logger
 
 if TYPE_CHECKING:
     from mlflow import MlflowClient
@@ -73,12 +75,12 @@ class ModelValidator:
         Model version to validate (string or int).
     """
 
-    client: "MlflowClient"
+    client: MlflowClient
     model_name: str
     version: str | int
     _checks: list[tuple[str, CheckFn]] = field(default_factory=list, init=False)
 
-    def add_check(self, name: str, fn: CheckFn) -> "ModelValidator":
+    def add_check(self, name: str, fn: CheckFn) -> ModelValidator:
         """Register a check under *name*.
 
         Parameters
@@ -255,7 +257,7 @@ class ModelValidator:
         self,
         inference_df: Any,
         *,
-        fe: "Optional[Any]" = None,
+        fe: Any | None = None,
         label_col: str,
         env_manager: str = "virtualenv",
     ) -> tuple[str, CheckFn]:
@@ -280,7 +282,7 @@ class ModelValidator:
                 fe_client = FeatureEngineeringClient()
             else:
                 fe_client = fe
-                
+
             model_uri = f"models:/{model_name}/{version}"
             try:
                 result_type = inference_df.schema[label_col].dataType

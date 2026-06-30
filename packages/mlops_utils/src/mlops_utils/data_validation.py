@@ -6,12 +6,14 @@ Generic PySpark data quality validation framework.
 
 from __future__ import annotations
 
-from mlops_utils.logger import get_logger
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Any
+from typing import Any
 
-from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
+from pyspark.sql import DataFrame
+
+from mlops_utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -37,7 +39,7 @@ class DataValidator:
     df: DataFrame
     _checks: list[tuple[str, DataCheckFn]] = field(default_factory=list, init=False)
 
-    def add_check(self, name: str, fn: DataCheckFn) -> "DataValidator":
+    def add_check(self, name: str, fn: DataCheckFn) -> DataValidator:
         """Register a check under *name*.
         
         Parameters
@@ -78,7 +80,7 @@ class DataValidator:
             logger.info("[%s] %s — %s", "PASS" if passed else "FAIL", name, message)
 
         overall = all(r.passed for r in results)
-        
+
         if not overall and raise_on_fail:
             failed_checks = [r for r in results if not r.passed]
             error_msg = "\n".join(f"- {r.name}: {r.message}" for r in failed_checks)

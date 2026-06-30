@@ -10,11 +10,10 @@ is mocked.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-
 
 # ===========================================================================
 # Column normalisation helpers
@@ -241,8 +240,9 @@ class TestReadFromHttpCsv:
         assert result.count() == 1
 
     def test_fallback_url_tried_on_failure(self, spark, churn_config):
-        from churn.data_source import read_from_http_csv
         import requests as req_lib
+
+        from churn.data_source import read_from_http_csv
 
         churn_config.data_source.type = "http_csv"
         churn_config.data_source.url = "http://primary.example.com/data.csv"
@@ -267,8 +267,9 @@ class TestReadFromHttpCsv:
         assert call_count == 2  # primary + S3 fallback
 
     def test_raises_when_all_urls_fail(self, spark, churn_config):
-        from churn.data_source import read_from_http_csv
         import requests as req_lib
+
+        from churn.data_source import read_from_http_csv
 
         churn_config.data_source.type = "http_csv"
         churn_config.data_source.url = "http://bad.example.com/data.csv"
@@ -301,7 +302,7 @@ class TestReadFromHttpCsv:
 
 class TestGetSourceDataframe:
     def test_dispatches_to_unity_catalog_reader(self, spark, churn_config):
-        from churn.data_source import get_source_dataframe, read_from_unity_catalog
+        from churn.data_source import get_source_dataframe
 
         churn_config.data_source.type = "unity_catalog_table"
         churn_config.data_source.source_table = "lob.sch.tbl"
@@ -333,8 +334,8 @@ class TestGetSourceDataframe:
             mock_fn.assert_called_once()
 
     def test_raises_on_unknown_source_type(self, spark, churn_config):
-        from churn.data_source import get_source_dataframe
         from churn.config import DataSourceConfig
+        from churn.data_source import get_source_dataframe
 
         # Bypass __post_init__ validation to test the dispatcher's own guard
         churn_config.data_source = object.__new__(DataSourceConfig)

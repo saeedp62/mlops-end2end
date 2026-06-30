@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import pytest
 
-
 # All tests in this module require a live Databricks cluster
 pytestmark = pytest.mark.integration
 
@@ -47,8 +46,7 @@ def ci_config(tmp_path_factory):
     All other schemas (online_features, ml_models, etc.) use the shared
     schema names – CI tests do not write to those.
     """
-    from churn.config import ChurnConfig
-    from churn.config import SchemaConfig
+    from churn.config import ChurnConfig, SchemaConfig
 
     return ChurnConfig(
         catalog="lighthouse_bkk6_analytics",
@@ -70,7 +68,7 @@ def ci_config(tmp_path_factory):
 @pytest.fixture(scope="module", autouse=True)
 def setup_ci_schema(ci_spark, ci_config):
     """Create all CI schemas (and clean up after all tests in this module)."""
-    from mlops_utils.catalog import ensure_mlops_schemas, drop_and_recreate_schema
+    from mlops_utils.catalog import drop_and_recreate_schema, ensure_mlops_schemas
 
     # Set up – create the two CI-isolated schemas
     ci_schemas = {
@@ -89,7 +87,7 @@ def setup_ci_schema(ci_spark, ci_config):
 @pytest.fixture(scope="module")
 def bronze_table_created(ci_spark, ci_config):
     """Download and ingest the Telco CSV into the CI bronze table."""
-    from churn.data_source import download_telco_csv, normalize_column_names, ingest_bronze_table
+    from churn.data_source import download_telco_csv, ingest_bronze_table, normalize_column_names
 
     raw_df = download_telco_csv()
     normalised_df = normalize_column_names(raw_df)
@@ -140,7 +138,6 @@ class TestFeatureEngineeringPipeline:
         assert "split" in cols
 
     def test_label_table_split_values(self, ci_spark, ci_config):
-        from pyspark.sql.functions import col
 
         splits = {
             r["split"]
@@ -166,7 +163,7 @@ class TestFeatureEngineeringPipeline:
         assert dtype_map.get("senior_citizen") == "string"
 
     def test_train_test_ratio_is_approximately_80_20(self, ci_spark, ci_config):
-        from pyspark.sql.functions import col, count
+        from pyspark.sql.functions import col
 
         label_df = ci_spark.table(ci_config.full_label_table)
         total = label_df.count()

@@ -9,10 +9,6 @@ No Databricks or external dependencies required.
 
 from __future__ import annotations
 
-import pytest
-from pyspark.sql import functions as F
-
-
 # ---------------------------------------------------------------------------
 # compute_service_features
 # ---------------------------------------------------------------------------
@@ -57,10 +53,7 @@ class TestComputeServiceFeatures:
     def test_column_is_double_type(self, spark):
         from churn.feature_engineering import compute_service_features
 
-        row = {c: "No" for c in [
-            "online_security", "online_backup", "device_protection",
-            "tech_support", "streaming_tv", "streaming_movies",
-        ]}
+        row = dict.fromkeys(["online_security", "online_backup", "device_protection", "tech_support", "streaming_tv", "streaming_movies"], "No")
         df = spark.createDataFrame([row])
         result = compute_service_features(df)
         dtype = dict(result.dtypes)["num_optional_services"]
@@ -81,7 +74,7 @@ class TestComputeServiceFeatures:
 
 class TestCleanChurnFeatures:
     def test_senior_citizen_int_to_string(self, spark):
-        from churn.feature_engineering import compute_service_features, clean_churn_features
+        from churn.feature_engineering import clean_churn_features, compute_service_features
 
         # Must run compute_service_features first (adds required cols)
         row = {
@@ -99,7 +92,7 @@ class TestCleanChurnFeatures:
         assert result["senior_citizen"] == "Yes"
 
     def test_senior_citizen_zero_maps_to_no(self, spark):
-        from churn.feature_engineering import compute_service_features, clean_churn_features
+        from churn.feature_engineering import clean_churn_features, compute_service_features
 
         row = {
             "senior_citizen": 0,
@@ -116,7 +109,7 @@ class TestCleanChurnFeatures:
         assert result["senior_citizen"] == "No"
 
     def test_whitespace_total_charges_becomes_zero(self, spark):
-        from churn.feature_engineering import compute_service_features, clean_churn_features
+        from churn.feature_engineering import clean_churn_features, compute_service_features
 
         row = {
             "senior_citizen": 0,
@@ -133,7 +126,7 @@ class TestCleanChurnFeatures:
         assert result["total_charges"] == 0.0
 
     def test_null_tenure_filled_with_zero(self, spark):
-        from churn.feature_engineering import compute_service_features, clean_churn_features
+        from churn.feature_engineering import clean_churn_features, compute_service_features
 
         row = {
             "senior_citizen": 0,
@@ -150,7 +143,7 @@ class TestCleanChurnFeatures:
         assert result["tenure"] == 0.0
 
     def test_null_monthly_charges_filled(self, spark):
-        from churn.feature_engineering import compute_service_features, clean_churn_features
+        from churn.feature_engineering import clean_churn_features, compute_service_features
 
         row = {
             "senior_citizen": 0,
@@ -206,10 +199,10 @@ class TestAddTransactionTimestamp:
 
 class TestSplitLabelFromFeatures:
     def test_feature_df_does_not_contain_label(self, feature_sdf):
-        from churn.feature_engineering import split_label_from_features
-
         # Manually add churn back for testing the split function
         from pyspark.sql.functions import lit
+
+        from churn.feature_engineering import split_label_from_features
         df_with_label = feature_sdf.withColumn("churn", lit("No"))
         feature_df, label_df = split_label_from_features(df_with_label, "churn")
 
@@ -217,8 +210,9 @@ class TestSplitLabelFromFeatures:
         assert "churn" in label_df.columns
 
     def test_label_df_contains_split_column(self, feature_sdf):
-        from churn.feature_engineering import split_label_from_features
         from pyspark.sql.functions import lit
+
+        from churn.feature_engineering import split_label_from_features
 
         df_with_label = feature_sdf.withColumn("churn", lit("Yes"))
         _feature_df, label_df = split_label_from_features(df_with_label, "churn")
@@ -226,8 +220,9 @@ class TestSplitLabelFromFeatures:
         assert "split" in label_df.columns
 
     def test_split_column_only_has_train_or_test(self, feature_sdf):
-        from churn.feature_engineering import split_label_from_features
         from pyspark.sql.functions import lit
+
+        from churn.feature_engineering import split_label_from_features
 
         df_with_label = feature_sdf.withColumn("churn", lit("No"))
         _feature_df, label_df = split_label_from_features(df_with_label, "churn", seed=42)
@@ -236,8 +231,9 @@ class TestSplitLabelFromFeatures:
         assert splits.issubset({"train", "test"})
 
     def test_total_rows_preserved(self, feature_sdf):
-        from churn.feature_engineering import split_label_from_features
         from pyspark.sql.functions import lit
+
+        from churn.feature_engineering import split_label_from_features
 
         df_with_label = feature_sdf.withColumn("churn", lit("No"))
         original_count = df_with_label.count()

@@ -5,9 +5,11 @@ Internal module providing a retry decorator for Databricks API calls.
 """
 
 import functools
-from mlops_utils.logger import get_logger
 import time
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
+
+from mlops_utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -34,7 +36,7 @@ def with_retry(max_attempts: int = 3, backoff_base: float = 2.0) -> Callable[[F]
                     if attempt >= max_attempts:
                         logger.error("Function '%s' failed after %d attempts: %s", func.__name__, attempt, exc)
                         raise
-                    
+
                     # Log warning and wait
                     sleep_time = backoff_base ** (attempt - 1)
                     logger.warning(

@@ -21,18 +21,17 @@ Public API
 from __future__ import annotations
 
 from mlops_utils.logger import get_logger
-from typing import Optional
 
 logger = get_logger(__name__)
 
 
 def setup_catalog_and_schema(
-    spark: "pyspark.sql.SparkSession",  # type: ignore[name-defined]  # noqa: F821
+    spark: pyspark.sql.SparkSession,  # type: ignore[name-defined]  # noqa: F821
     catalog: str,
     schema: str,
     *,
-    volume_name: Optional[str] = None,
-    grant_all_to: Optional[str] = None,
+    volume_name: str | None = None,
+    grant_all_to: str | None = None,
 ) -> None:
     """Create (if missing) and USE a Unity Catalog catalog + schema.
 
@@ -87,11 +86,11 @@ def setup_catalog_and_schema(
 
 
 def drop_and_recreate_schema(
-    spark: "pyspark.sql.SparkSession",  # type: ignore[name-defined]  # noqa: F821
+    spark: pyspark.sql.SparkSession,  # type: ignore[name-defined]  # noqa: F821
     catalog: str,
     schema: str,
     *,
-    volume_name: Optional[str] = None,
+    volume_name: str | None = None,
 ) -> None:
     """Drop (CASCADE) and recreate a schema – for CI/CD reset or demo purposes.
 
@@ -123,11 +122,11 @@ def drop_and_recreate_schema(
 
 
 def ensure_mlops_schemas(
-    spark: "pyspark.sql.SparkSession",  # type: ignore[name-defined]  # noqa: F821
+    spark: pyspark.sql.SparkSession,  # type: ignore[name-defined]  # noqa: F821
     catalog: str,
-    schemas: "dict[str, str]",
+    schemas: dict[str, str],
     *,
-    grant_all_to: "Optional[str]" = None,
+    grant_all_to: str | None = None,
 ) -> None:
     """Idempotently create all MLOps schemas in *catalog*.
 
@@ -216,7 +215,7 @@ def ensure_mlops_schemas(
 
 
 def set_table_owner(
-    spark: "pyspark.sql.SparkSession",  # type: ignore[name-defined]  # noqa: F821
+    spark: pyspark.sql.SparkSession,  # type: ignore[name-defined]  # noqa: F821
     full_table_name: str,
     owner: str,
 ) -> None:
@@ -226,7 +225,7 @@ def set_table_owner(
 
 
 def grant_table_privileges(
-    spark: "pyspark.sql.SparkSession",  # type: ignore[name-defined]  # noqa: F821
+    spark: pyspark.sql.SparkSession,  # type: ignore[name-defined]  # noqa: F821
     full_table_name: str,
     principal: str,
     privileges: list[str] | None = None,
@@ -248,7 +247,7 @@ def grant_table_privileges(
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _safe_sql(spark: "pyspark.sql.SparkSession", statement: str) -> None:  # type: ignore[name-defined]  # noqa: F821
+def _safe_sql(spark: pyspark.sql.SparkSession, statement: str) -> None:  # type: ignore[name-defined]  # noqa: F821
     """Execute *statement*, logging and swallowing non-critical errors."""
     try:
         spark.sql(statement)

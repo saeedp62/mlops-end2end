@@ -35,11 +35,13 @@ Public API
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from mlops_utils.logger import get_logger
-from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from pyspark.sql import DataFrame as SparkDataFrame, SparkSession
+    from pyspark.sql import DataFrame as SparkDataFrame
+    from pyspark.sql import SparkSession
 
     from churn.config import ChurnConfig, DataSourceConfig
 
@@ -61,9 +63,9 @@ _S3_FALLBACK_URL = (
 # ===========================================================================
 
 def get_source_dataframe(
-    spark: "SparkSession",
-    config: "ChurnConfig",
-) -> "SparkDataFrame":
+    spark: SparkSession,
+    config: ChurnConfig,
+) -> SparkDataFrame:
     """Dispatch to the correct source reader based on ``config.data_source.type``.
 
     Parameters
@@ -104,8 +106,8 @@ def get_source_dataframe(
 
 
 def ingest_bronze_table(
-    spark: "SparkSession",
-    df: "SparkDataFrame",
+    spark: SparkSession,
+    df: SparkDataFrame,
     full_table_name: str,
     *,
     mode: str = "overwrite",
@@ -147,9 +149,9 @@ def ingest_bronze_table(
 # ===========================================================================
 
 def read_from_unity_catalog(
-    spark: "SparkSession",
-    ds: "DataSourceConfig",
-) -> "SparkDataFrame":
+    spark: SparkSession,
+    ds: DataSourceConfig,
+) -> SparkDataFrame:
     """Read a Delta table from another LOB Unity Catalog.
 
     Uses the Spark ``spark.table()`` API which Databricks routes transparently
@@ -194,9 +196,9 @@ def read_from_unity_catalog(
 
 
 def read_from_volume_csv(
-    spark: "SparkSession",
-    ds: "DataSourceConfig",
-) -> "SparkDataFrame":
+    spark: SparkSession,
+    ds: DataSourceConfig,
+) -> SparkDataFrame:
     """Read a CSV file from a Unity Catalog Volume path.
 
     Parameters
@@ -242,9 +244,9 @@ def read_from_volume_csv(
 
 
 def read_from_http_csv(
-    spark: "SparkSession",
-    ds: "DataSourceConfig",
-) -> "SparkDataFrame":
+    spark: SparkSession,
+    ds: DataSourceConfig,
+) -> SparkDataFrame:
     """Download a CSV from an HTTP URL and convert to a Spark DataFrame.
 
     Intended **only for local development and CI unit tests** that cannot
@@ -270,7 +272,7 @@ def read_from_http_csv(
 
     primary_url = ds.url or _DEFAULT_HTTP_URL
 
-    pdf: Optional[pd.DataFrame] = None
+    pdf: pd.DataFrame | None = None
     for attempt_url in filter(None, [primary_url, _S3_FALLBACK_URL]):
         try:
             response = requests.get(attempt_url, timeout=60)
@@ -300,14 +302,13 @@ def read_from_http_csv(
 
 def normalize_column_names(df: "import pandas as pd; pd.DataFrame") -> "import pandas as pd; pd.DataFrame":  # type: ignore[name-defined]
     """Public alias for :func:`_normalize_pandas_columns` (kept for backwards compat)."""
-    import pandas as pd
     return _normalize_pandas_columns(df)
 
 
 def _normalize_pandas_columns(df: "import pandas as pd; pd.DataFrame") -> "import pandas as pd; pd.DataFrame":  # type: ignore[name-defined]
     """Normalise column names of a **pandas** DataFrame to snake_case."""
     import re
-    import pandas as pd
+
 
     def _norm(name: str) -> str:
         name = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)  # CamelCase → snake
@@ -326,7 +327,7 @@ def _normalize_pandas_columns(df: "import pandas as pd; pd.DataFrame") -> "impor
     })
 
 
-def _normalize_spark_columns(df: "SparkDataFrame") -> "SparkDataFrame":
+def _normalize_spark_columns(df: SparkDataFrame) -> SparkDataFrame:
     """Normalise column names of a **Spark** DataFrame to snake_case.
 
     Applied when the source table uses PascalCase or other non-snake_case
@@ -359,7 +360,7 @@ def _normalize_spark_columns(df: "SparkDataFrame") -> "SparkDataFrame":
 # Schema validation helper (internal)
 # ===========================================================================
 
-def _validate_sample(df: "SparkDataFrame", sample_size: int = 10_000) -> None:
+def _validate_sample(df: SparkDataFrame, sample_size: int = 10_000) -> None:
     """Run pandera validation on a small pandas sample of *df*."""
     from churn.schemas import BronzeCustomerSchema
 

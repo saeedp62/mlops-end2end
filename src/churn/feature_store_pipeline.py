@@ -33,8 +33,9 @@ Usage::
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from mlops_utils.logger import get_logger
-from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from pyspark.sql import SparkSession
@@ -45,12 +46,12 @@ logger = get_logger(__name__)
 
 
 def run_feature_engineering_pipeline(
-    spark: "SparkSession",
+    spark: SparkSession,
     config: ChurnConfig,
     *,
-    fe_client: Optional[object] = None,
+    fe_client: object | None = None,
     reset_feature_table: bool = True,
-    publish_online: Optional[bool] = None,
+    publish_online: bool | None = None,
 ) -> None:
     """Full Bronze → Feature-Store pipeline.
 
@@ -75,15 +76,15 @@ def run_feature_engineering_pipeline(
     Exception
         Re-raises any error from a pipeline stage after logging it.
     """
-    from databricks.feature_engineering import FeatureEngineeringClient  # type: ignore[import]
+
+    from mlops_utils.data_io import add_primary_key_constraint, write_delta
+    from mlops_utils.feature_store import FeatureStoreManager
 
     from churn.data_source import get_source_dataframe, ingest_bronze_table
     from churn.feature_engineering import (
         build_feature_df,
         split_label_from_features,
     )
-    from mlops_utils.data_io import write_delta, add_primary_key_constraint
-    from mlops_utils.feature_store import FeatureStoreManager
 
     if fe_client:
         fsm = FeatureStoreManager(
@@ -129,15 +130,17 @@ def run_feature_engineering_pipeline(
     # ------------------------------------------------------------------
     logger.info("[3.5/7] Running data quality validations…")
     from mlops_utils.data_validation import DataValidator
-    
+
     validator = DataValidator(feature_and_label_df)
     for pk in config.primary_keys:
         validator.add_check(DataValidator.check_no_nulls(pk))
         validator.add_check(DataValidator.check_unique(pk))
-    
+
     validator.add_check(DataValidator.check_allowed_values(config.label_col, [0, 1]))
-    validator.add_check(DataValidator.check_custom_sql("total_charges_non_negative", "total_charges >= 0"))
-    
+    validator.add_check(
+        DataValidator.check_custom_sql("total_charges_non_negative", "total_charges >= 0")
+    )
+
     # Run validations and fail the pipeline if they don't pass
     validator.run(raise_on_fail=True)
 
@@ -150,6 +153,7 @@ def run_feature_engineering_pipeline(
         label_col=config.label_col,
         train_ratio=config.train_ratio,
         seed=config.rng_seed,
+        strategy="time",
     )
 
     # ------------------------------------------------------------------
@@ -201,44 +205,7 @@ def run_feature_engineering_pipeline(
     # Optional: Publish to online store
     # ------------------------------------------------------------------
     if do_online:
-        _publish_online(config, fsm)
+        from mlops_utils.feature_store import publish_online_if_enabled
+        publish_online_if_enabled(config, fsm, force_publish=True)
 
     logger.info("Feature engineering pipeline completed successfully.")
-
-
-# ---------------------------------------------------------------------------
-# Online store publish helper
-# ---------------------------------------------------------------------------
-
-def _publish_online(config: ChurnConfig, fsm: "FeatureStoreManager") -> None:
-    """Publish the offline feature table to a UC Online Table and create an endpoint."""
-    from mlops_utils.feature_store import create_feature_serving_endpoint
-
-    logger.info("Publishing features to UC Online Table...")
-
-    fsm.sync_online_table(
-        table_name=config.feature_table,
-        primary_keys=list(config.primary_keys)
-    )
-
-    # Optionally create a Feature Serving endpoint
-    endpoint_name = config.online_store.endpoint_name
-    if endpoint_name:
-        try:
-            from databricks.feature_engineering.entities.feature_serving_endpoint import (  # type: ignore[import]
-                ServedEntity,
-            )
-
-            served_entities = [
-                ServedEntity(
-                    feature_spec_name=config.full_feature_table,
-                    workload_size="Small",
-                    scale_to_zero_enabled=True,
-                )
-            ]
-            create_feature_serving_endpoint(
-                endpoint_name=endpoint_name,
-                served_entities=served_entities,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not create serving endpoint '%s': %s", endpoint_name, exc)

@@ -16,18 +16,23 @@ Public API
         promote_model_alias,
         set_model_version_tags,
         log_classification_metrics,
+        managed_mlflow_run,
+        log_feature_importance,
     )
 """
 
 from __future__ import annotations
 
+import os
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any
+
 from mlops_utils.logger import get_logger
-from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
+    import pandas as pd
     from mlflow import MlflowClient
     from mlflow.entities import Run
-    import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -39,7 +44,7 @@ logger = get_logger(__name__)
 def get_or_create_experiment(
     experiment_name: str,
     *,
-    tags: Optional[dict[str, str]] = None,
+    tags: dict[str, str] | None = None,
 ) -> str:
     """Return the experiment ID for *experiment_name*, creating it if absent.
 
@@ -79,17 +84,65 @@ def ensure_workspace_path(path: str) -> None:
         logger.warning("Could not create workspace path '%s': %s", path, exc)
 
 
+@contextmanager
+def managed_mlflow_run(
+    experiment_id: str,
+    run_name: str | None = None,
+    tags: dict[str, str] | None = None,
+    run_id: str | None = None,
+) -> Any:
+    """Context manager for managed MLflow runs with system metrics and metadata.
+
+    Parameters
+    ----------
+    experiment_id:
+        MLflow experiment ID.
+    run_name:
+        Name for the MLflow run.
+    tags:
+        Additional tags to append to the run.
+    run_id:
+        Existing run ID to resume (if any).
+
+    Yields
+    ------
+    mlflow.ActiveRun
+    """
+    import mlflow
+
+    # Attempt to enable system metrics logging if available
+    try:
+        mlflow.enable_system_metrics_logging()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("System metrics logging not available: %s", exc)
+
+    run_tags = tags.copy() if tags else {}
+    # Auto-inject environment details
+    user = os.environ.get("USER", os.environ.get("USERNAME", "unknown"))
+    run_tags["user"] = user
+
+    with mlflow.start_run(
+        run_id=run_id,
+        experiment_id=experiment_id,
+        run_name=run_name,
+        tags=run_tags,
+    ) as run:
+        logger.info("Started managed MLflow run '%s' (id=%s)", run_name or run_id, run.info.run_id)
+        yield run
+        logger.info("Completed managed MLflow run '%s'", run_name or run_id)
+
+
 # ---------------------------------------------------------------------------
 # Model registry helpers
 # ---------------------------------------------------------------------------
 
 def get_champion_metric(
-    client: "MlflowClient",
+    client: MlflowClient,
     model_name: str,
     metric_key: str,
     *,
     alias: str = "Champion",
-) -> Optional[float]:
+) -> float | None:
     """Fetch a logged metric from the run backing the *alias* model version.
 
     Parameters
@@ -129,7 +182,7 @@ def get_champion_metric(
 
 
 def promote_model_alias(
-    client: "MlflowClient",
+    client: MlflowClient,
     model_name: str,
     version: str | int,
     alias: str,
@@ -154,7 +207,7 @@ def promote_model_alias(
 
 
 def set_model_version_tags(
-    client: "MlflowClient",
+    client: MlflowClient,
     model_name: str,
     version: str | int,
     tags: dict[str, Any],
@@ -183,10 +236,10 @@ def set_model_version_tags(
 
 
 def find_run_by_name(
-    client: "MlflowClient",
+    client: MlflowClient,
     experiment_id: str,
     run_name: str,
-) -> Optional["Run"]:
+) -> Run | None:
     """Search for the most recent run with *run_name* in *experiment_id*.
 
     Returns ``None`` if not found.
@@ -204,14 +257,70 @@ def find_run_by_name(
 # Evaluation helpers
 # ---------------------------------------------------------------------------
 
+def log_feature_importance(model: Any, feature_names: list[str], filename: str = "feature_importance.png") -> None:
+    """Extract and log feature importances for tree-based estimators.
+    
+    If `model` is a Scikit-Learn Pipeline, attempts to find the classifier step.
+    Extracts `.feature_importances_`, generates a bar chart, and logs to MLflow.
+    
+    Parameters
+    ----------
+    model:
+        Scikit-Learn estimator or Pipeline.
+    feature_names:
+        List of feature names matching the estimator's input columns.
+    filename:
+        Artifact filename to log to MLflow.
+    """
+    import matplotlib.pyplot as plt
+    import mlflow
+    import numpy as np
+
+    estimator = model
+    # If it's a Pipeline, try to get the final estimator
+    if hasattr(model, "steps"):
+        estimator = model.steps[-1][1]
+
+    if not hasattr(estimator, "feature_importances_"):
+        logger.info("Estimator %s does not expose feature_importances_.", type(estimator).__name__)
+        return
+
+    importances = estimator.feature_importances_
+    if len(importances) != len(feature_names):
+        logger.warning(
+            "Feature importance length (%d) != feature_names length (%d). Skipping log.",
+            len(importances), len(feature_names)
+        )
+        return
+
+    # Sort features by importance
+    indices = np.argsort(importances)[::-1]
+    # Take top 20 features to avoid clutter
+    top_k = min(20, len(indices))
+    sorted_importances = importances[indices][:top_k]
+    sorted_features = [feature_names[i] for i in indices[:top_k]]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.barh(range(top_k), sorted_importances[::-1], align="center")
+    ax.set_yticks(range(top_k))
+    ax.set_yticklabels(sorted_features[::-1])
+    ax.set_xlabel("Feature Importance")
+    ax.set_title("Top 20 Feature Importances")
+    plt.tight_layout()
+
+    mlflow.log_figure(fig, filename)
+    plt.close(fig)
+    logger.info("Logged feature importance plot as '%s'.", filename)
+
+
 def log_classification_metrics(
     model: Any,
-    X: "pd.DataFrame",
-    y: "pd.Series",
+    X: pd.DataFrame,
+    y: pd.Series,
     *,
     label_col: str,
     metric_prefix: str = "",
-    pos_label: Optional[str] = None,
+    pos_label: str | None = None,
     log_explainability: bool = False,
 ) -> Any:
     """Evaluate a model and log metrics into the active MLflow run.
@@ -241,9 +350,9 @@ def log_classification_metrics(
     mlflow.models.EvaluationResult
     """
     import mlflow
+    from mlflow import pyfunc
     from mlflow.models import Model
     from mlflow.pyfunc import PyFuncModel
-    from mlflow import pyfunc
 
     # Wrap sklearn model as pyfunc if needed
     if not isinstance(model, PyFuncModel):

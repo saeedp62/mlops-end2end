@@ -8,12 +8,10 @@ These tests run pure sklearn logic – no Spark session required.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-
 
 # ---------------------------------------------------------------------------
 # mlops_utils.preprocessing builders
